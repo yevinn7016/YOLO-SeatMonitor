@@ -7,6 +7,8 @@ from backend.domain.models import SeatRoi, SeatStatus
 PERSON_CLASSES = {"person"}
 BELONGING_CLASSES = {"backpack", "handbag", "suitcase", "book", "laptop"}
 
+
+# 지정한 경로에서 YOLO 모델을 불러온다.
 def load_model(model_path: str):
     path = Path(model_path)
 
@@ -15,6 +17,8 @@ def load_model(model_path: str):
 
     return YOLO(str(path))
 
+
+# YOLO 원본 결과를 객체별 정보 목록으로 정리한다.
 def format_yolo_results(results) -> list[dict]:
     detections = []
     result = results[0]
@@ -35,6 +39,7 @@ def format_yolo_results(results) -> list[dict]:
     return detections
 
 
+# 카메라 프레임에서 신뢰도 기준 이상의 객체를 탐지한다.
 def detect_frame(model, frame, confidence: float = 0.35) -> list[dict]:
     """OpenCV의 NumPy frame을 바로 YOLO에 전달한다."""
 
@@ -42,11 +47,13 @@ def detect_frame(model, frame, confidence: float = 0.35) -> list[dict]:
     return format_yolo_results(results)
 
 
+# 감지 사각형의 중심 좌표를 계산한다.
 def get_box_center(box: list[float]) -> tuple[float, float]:
     x1, y1, x2, y2 = box
     return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
 
 
+# 점이 좌석 ROI 다각형 내부에 있는지 레이캐스팅으로 확인한다.
 def is_point_in_polygon(point: tuple[float, float], seat: SeatRoi) -> bool:
     """ray casting 방식으로 정규화 중심점이 ROI 내부인지 확인한다."""
 
@@ -72,6 +79,7 @@ def is_point_in_polygon(point: tuple[float, float], seat: SeatRoi) -> bool:
     return inside
 
 
+# 감지된 객체를 중심점 위치에 따라 각 좌석에 배정한다.
 def assign_detections_to_seats(
     detections: list[dict],
     seats: list[SeatRoi],
@@ -100,6 +108,8 @@ def assign_detections_to_seats(
 
     return seat_results
 
+
+# 좌석에서 감지된 객체를 바탕으로 즉시 상태를 판단한다.
 def decide_instant_status(detections: list[dict]) -> str:
     class_names = set()
 
@@ -117,6 +127,8 @@ def decide_instant_status(detections: list[dict]) -> str:
 
     return "empty"
 
+
+# 좌석별 감지 결과를 좌석 상태 목록으로 변환한다.
 def build_seat_statuses(seat_results: list[dict]) -> list[SeatStatus]:
     statuses = []
 
@@ -131,6 +143,7 @@ def build_seat_statuses(seat_results: list[dict]) -> list[SeatStatus]:
     return statuses
 
 
+# 프레임 감지부터 좌석별 상태 생성까지 전체 분석을 수행한다.
 def analyze_frame(model, frame, seats: list[SeatRoi]) -> list[SeatStatus]:
     detections = detect_frame(model, frame)
     frame_height, frame_width = frame.shape[:2]
