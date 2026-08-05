@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from fastapi.sse import EventSourceResponse
 
 from backend.domain.models import Layout, SeatStatus, Settings
 from backend.domain.service import SeatService
@@ -70,6 +71,25 @@ def put_layout(layout: Layout):
 @app.get("/api/seats", response_model=list[SeatStatus])
 def get_seats():
     return seat_service.get_statuses()
+
+
+@app.post("/api/seats/reset", response_model=list[SeatStatus])
+def reset_all_seat_timers():
+    return seat_service.reset_all_timers()
+
+
+@app.post("/api/seats/{seat_id}/reset", response_model=SeatStatus)
+def reset_seat_timer(seat_id: str):
+    try:
+        return seat_service.reset_seat_timer(seat_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="존재하지 않는 좌석입니다.")
+
+
+@app.get("/api/seats/stream", response_class=EventSourceResponse)
+def stream_seats():
+    for statuses in seat_service.status_events():
+        yield [status.model_dump(mode="json") for status in statuses]
 
 
 @app.get("/api/settings", response_model=Settings)
