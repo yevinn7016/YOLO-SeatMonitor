@@ -1,4 +1,10 @@
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, Field
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class Point(BaseModel):
@@ -23,6 +29,8 @@ class SeatStatus(BaseModel):
     seat_id: str
     status: str
     detections: list[dict] = Field(default_factory=list)
+    updated_at: datetime = Field(default_factory=utc_now)
+    away_since: datetime | None = None
 
 
 class Settings(BaseModel):
