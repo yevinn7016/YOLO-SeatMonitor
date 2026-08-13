@@ -17,7 +17,7 @@ class Point(BaseModel):
 class SeatRoi(BaseModel):
     seat_id: str = Field(min_length=1)
     label: str = Field(min_length=1)
-    polygon: list[Point] = Field(min_length=4, max_length=4)
+    polygon: list[Point] = Field(min_length=3)
 
 
 class Layout(BaseModel):
