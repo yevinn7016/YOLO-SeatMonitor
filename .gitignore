@@ -1,0 +1,14 @@
+node_modules
+dist
+.venv/
+playwright-report
+test-results
+.env
+.env.local
+*.log
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+tmp/
