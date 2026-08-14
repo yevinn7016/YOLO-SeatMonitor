@@ -27,7 +27,7 @@ class SeatService:
         self._person_detected_since: dict[str, float] = {}
         self._away_started_at: dict[str, float] = {}
         self._away_started_wall_at: dict[str, datetime] = {}
-        self._subscribers: set[Queue[list[SeatStatus]]] = set()
+        self._subscribers: set[Queue[list[SeatStatus]]] = set() #큐 하나가 구독자 한명
         self._lock = Lock()
 
     # 현재 좌석 배치의 복사본을 반환한다.
