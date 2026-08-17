@@ -37,6 +37,10 @@ Important rules:
 - Keep different seat ROIs from overlapping as much as possible.
 - Group seats belonging to the same physical table with the same positive
   table_group integer. The integer itself is only a grouping hint.
+- Within each table, give seats in the same visual horizontal row the same
+  positive row_group integer. Use a different row_group for each row.
+- Rows are interpreted from top to bottom in the image, and seats within a row
+  are interpreted from left to right. The integers are only grouping hints.
 - Return polygon points clockwise using x/y coordinates normalized to 0..1000
   relative to the original image (x: left to right, y: top to bottom).
 - Return every visible seat once. Do not return table-only or aisle regions.
@@ -53,6 +57,7 @@ GEMINI_ROI_RESPONSE_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "table_group": {"type": "integer"},
+                    "row_group": {"type": "integer"},
                     "polygon": {
                         "type": "array",
                         "items": {
@@ -65,7 +70,7 @@ GEMINI_ROI_RESPONSE_SCHEMA = {
                         },
                     },
                 },
-                "required": ["table_group", "polygon"],
+                "required": ["table_group", "row_group", "polygon"],
             },
         },
     },
@@ -110,6 +115,11 @@ class _GeminiSeatCandidate(BaseModel):
     table_group: int = Field(
         ge=1,
         description="Grouping hint shared by seats at the same physical table.",
+    )
+    row_group: int = Field(
+        default=1,
+        ge=1,
+        description="Grouping hint shared by seats in the same visual row.",
     )
     polygon: list[_GeminiPoint] = Field(
         min_length=3,
@@ -173,6 +183,18 @@ def _candidate_to_points(candidate: _GeminiSeatCandidate) -> list[Point]:
     ]
 
 
+def _row_label(index: int) -> str:
+    """1부터 시작하는 행 번호를 A, B, ..., Z, AA 형식으로 바꾼다."""
+
+    label = ""
+
+    while index > 0:
+        index, remainder = divmod(index - 1, 26)
+        label = chr(ord("A") + remainder) + label
+
+    return label
+
+
 def build_layout_suggestion(
     payload: _GeminiRoiResponse,
     model: str,
@@ -201,21 +223,30 @@ def build_layout_suggestion(
     seats: list[SeatRoi] = []
 
     for table_index, candidates in enumerate(ordered_groups, start=1):
-        ordered_seats = sorted(
-            candidates,
-            key=lambda candidate: (
-                _polygon_center(candidate)[1],
-                _polygon_center(candidate)[0],
-            ),
-        )
+        row_candidates: dict[int, list[_GeminiSeatCandidate]] = defaultdict(list)
 
-        for seat_index, candidate in enumerate(ordered_seats, start=1):
-            seat_id = f"T{table_index:02d}-A-{seat_index:02d}"
-            seats.append(SeatRoi(
-                seat_id=seat_id,
-                label=seat_id,
-                polygon=_candidate_to_points(candidate),
-            ))
+        for candidate in candidates:
+            row_candidates[candidate.row_group].append(candidate)
+
+        ordered_rows = sorted(row_candidates.values(), key=group_center)
+
+        for row_index, row in enumerate(ordered_rows, start=1):
+            row_label = _row_label(row_index)
+            ordered_seats = sorted(
+                row,
+                key=lambda candidate: (
+                    _polygon_center(candidate)[0],
+                    _polygon_center(candidate)[1],
+                ),
+            )
+
+            for seat_index, candidate in enumerate(ordered_seats, start=1):
+                seat_id = f"T{table_index:02d}-{row_label}-{seat_index:02d}"
+                seats.append(SeatRoi(
+                    seat_id=seat_id,
+                    label=seat_id,
+                    polygon=_candidate_to_points(candidate),
+                ))
 
     if not seats:
         logger.warning("Gemini ROI 응답에 유효한 좌석 후보가 없습니다.")

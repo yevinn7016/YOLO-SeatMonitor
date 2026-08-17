@@ -104,6 +104,51 @@ class RoiSuggesterTest(unittest.TestCase):
 
         self.assertEqual(len(suggestion.layout.seats[0].polygon), 5)
 
+    def test_rows_and_columns_are_numbered_by_visual_position(self):
+        payload = _GeminiRoiResponse.model_validate({
+            "seats": [
+                {
+                    "table_group": 4,
+                    "row_group": 20,
+                    "polygon": [
+                        {"x": 300, "y": 400}, {"x": 400, "y": 400},
+                        {"x": 400, "y": 500}, {"x": 300, "y": 500},
+                    ],
+                },
+                {
+                    "table_group": 4,
+                    "row_group": 10,
+                    "polygon": [
+                        {"x": 300, "y": 100}, {"x": 400, "y": 100},
+                        {"x": 400, "y": 200}, {"x": 300, "y": 200},
+                    ],
+                },
+                {
+                    "table_group": 4,
+                    "row_group": 10,
+                    "polygon": [
+                        {"x": 100, "y": 100}, {"x": 200, "y": 100},
+                        {"x": 200, "y": 200}, {"x": 100, "y": 200},
+                    ],
+                },
+                {
+                    "table_group": 4,
+                    "row_group": 20,
+                    "polygon": [
+                        {"x": 100, "y": 400}, {"x": 200, "y": 400},
+                        {"x": 200, "y": 500}, {"x": 100, "y": 500},
+                    ],
+                },
+            ]
+        })
+
+        suggestion = build_layout_suggestion(payload, "test-model", 1280, 720)
+
+        self.assertEqual(
+            [seat.seat_id for seat in suggestion.layout.seats],
+            ["T01-A-01", "T01-A-02", "T01-B-01", "T01-B-02"],
+        )
+
     def test_too_small_candidates_are_removed_with_warning(self):
         payload = _GeminiRoiResponse.model_validate({
             "seats": [
