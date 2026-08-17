@@ -31,7 +31,9 @@ Important rules:
 - Include the corresponding desk/workspace portion where that person's laptop,
   book, or bag is expected, but avoid neighboring seats and shared aisles.
 - Infer the area even when it includes empty space above or in front of a chair.
-- Prefer a four-point quadrilateral following the camera perspective.
+- Use at least three polygon points and choose as many vertices as needed to
+  represent the operational seat area. Do not force every ROI into a quadrilateral.
+- Keep each polygon as simple as possible and return its points clockwise.
 - Keep different seat ROIs from overlapping as much as possible.
 - Group seats belonging to the same physical table with the same positive
   table_group integer. The integer itself is only a grouping hint.
@@ -110,9 +112,8 @@ class _GeminiSeatCandidate(BaseModel):
         description="Grouping hint shared by seats at the same physical table.",
     )
     polygon: list[_GeminiPoint] = Field(
-        min_length=4,
-        max_length=4,
-        description="Four clockwise corners of the operational seat ROI.",
+        min_length=3,
+        description="Clockwise corners of the operational seat ROI.",
     )
 
 
