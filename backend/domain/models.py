@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +24,20 @@ class SeatRoi(BaseModel):
 class Layout(BaseModel):
     version: int = 1  # 레이아웃 데이터 형식 변경을 대비한 버전 번호.
     seats: list[SeatRoi] = Field(default_factory=list)
+
+
+class LayoutSuggestion(BaseModel):
+    """AI가 생성했지만 아직 저장되지 않은 좌석 배치 후보."""
+
+    suggestion_id: str
+    provider: Literal["gemini"] = "gemini"
+    model: str
+    generated_at: datetime = Field(default_factory=utc_now)
+    image_width: int = Field(gt=0)
+    image_height: int = Field(gt=0)
+    is_saved: bool = False
+    layout: Layout
+    warnings: list[str] = Field(default_factory=list)
 
 
 class SeatStatus(BaseModel):
