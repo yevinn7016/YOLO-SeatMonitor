@@ -86,6 +86,24 @@ class RoiSuggesterTest(unittest.TestCase):
         self.assertEqual(suggestion.layout.seats[0].polygon[0].x, 0.1)
         self.assertFalse(suggestion.is_saved)
 
+    def test_candidate_can_have_more_than_four_polygon_points(self):
+        payload = _GeminiRoiResponse.model_validate({
+            "seats": [{
+                "table_group": 1,
+                "polygon": [
+                    {"x": 100, "y": 100},
+                    {"x": 300, "y": 100},
+                    {"x": 350, "y": 250},
+                    {"x": 200, "y": 400},
+                    {"x": 50, "y": 250},
+                ],
+            }]
+        })
+
+        suggestion = build_layout_suggestion(payload, "test-model", 1280, 720)
+
+        self.assertEqual(len(suggestion.layout.seats[0].polygon), 5)
+
     def test_too_small_candidates_are_removed_with_warning(self):
         payload = _GeminiRoiResponse.model_validate({
             "seats": [
