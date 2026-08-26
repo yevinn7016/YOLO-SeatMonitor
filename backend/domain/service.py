@@ -13,7 +13,8 @@ from backend.repositories.json_repository import (
 )
 
 
-OCCUPIED_CONFIRMATION_SECONDS = 4
+OCCUPIED_CONFIRMATION_SECONDS = 2
+EMPTY_CONFIRMATION_SECONDS = 3
 
 
 class SeatService:
@@ -25,6 +26,7 @@ class SeatService:
         self._statuses: list[SeatStatus] = self._empty_statuses(self._layout)
         self._settings = load_settings()
         self._person_detected_since: dict[str, float] = {}
+        self._empty_detected_since: dict[str, float] = {}
         self._away_started_at: dict[str, float] = {}
         self._away_started_wall_at: dict[str, datetime] = {}
         self._subscribers: set[Queue[list[SeatStatus]]] = set() #큐 하나가 구독자 한명
@@ -47,6 +49,7 @@ class SeatService:
             self._layout = layout.model_copy(deep=True)
             self._statuses = self._empty_statuses(layout)
             self._person_detected_since = {}
+            self._empty_detected_since = {}
             self._away_started_at = {}
             self._away_started_wall_at = {}
             self._notify_subscribers_locked()
@@ -168,6 +171,8 @@ class SeatService:
         previous_value = previous_status.status if previous_status else "empty"
 
         if instant_status.status == "occupied":
+            self._empty_detected_since.pop(seat_id, None)
+
             # 이미 점유 중인 좌석은 사람 감지가 이어지는 동안 점유 상태를 유지한다.
             if previous_value == "occupied":
                 self._person_detected_since.pop(seat_id, None)
@@ -175,7 +180,7 @@ class SeatService:
                 self._away_started_wall_at.pop(seat_id, None)
                 status = "occupied"
             else:
-                # 처음 감지된 사람은 4초 동안 계속 보여야 점유로 확정한다.
+                # 처음 감지된 사람은 2초 동안 계속 보여야 점유로 확정한다.
                 detected_since = self._person_detected_since.setdefault(seat_id, now)
                 if now - detected_since >= OCCUPIED_CONFIRMATION_SECONDS:
                     # 연속 감지가 확인되면 자리 비움 시간을 지우고 점유로 바꾼다.
@@ -191,6 +196,7 @@ class SeatService:
             self._person_detected_since.pop(seat_id, None)
 
             if instant_status.status == "belongings_only":
+                self._empty_detected_since.pop(seat_id, None)
                 # 소지품만 있으면 처음 자리 비움 시각부터 경과 시간을 잰다.
                 away_since = self._away_started_at.setdefault(seat_id, now)
                 self._away_started_wall_at.setdefault(seat_id, wall_now)
@@ -200,10 +206,21 @@ class SeatService:
                 else:
                     status = "away"
             else:
-                # 사람과 소지품이 모두 없으면 자리 비움 기록을 지우고 빈자리로 바꾼다.
-                self._away_started_at.pop(seat_id, None)
-                self._away_started_wall_at.pop(seat_id, None)
-                status = "empty"
+                # 한 번의 미탐으로 상태가 흔들리지 않도록 3초간 이전 상태를 유지한다.
+                if previous_value != "empty":
+                    empty_since = self._empty_detected_since.setdefault(seat_id, now)
+                    if now - empty_since < EMPTY_CONFIRMATION_SECONDS:
+                        status = previous_value
+                    else:
+                        self._empty_detected_since.pop(seat_id, None)
+                        self._away_started_at.pop(seat_id, None)
+                        self._away_started_wall_at.pop(seat_id, None)
+                        status = "empty"
+                else:
+                    self._empty_detected_since.pop(seat_id, None)
+                    self._away_started_at.pop(seat_id, None)
+                    self._away_started_wall_at.pop(seat_id, None)
+                    status = "empty"
 
         status_changed = previous_status is None or previous_value != status
         updated_at = (
@@ -235,6 +252,7 @@ class SeatService:
         wall_now: datetime,
     ) -> SeatStatus:
         seat_id = current.seat_id
+        self._empty_detected_since.pop(seat_id, None)
 
         if current.status in {"away", "noshow"}:
             self._away_started_at[seat_id] = now

@@ -70,7 +70,7 @@ class DemoVideoWorker:
         model,
         seat_service: SeatService,
         frame_callback,
-        inference_interval: float = 2.0,
+        inference_interval: float = 1.0,
         inference_lock=None,
     ) -> None:
         self.path = path
@@ -250,7 +250,7 @@ class DemoVideoManager:
         model,
         seat_service: SeatService,
         inference_lock=None,
-        inference_interval: float = 2.0,
+        inference_interval: float = 1.0,
     ) -> None:
         self.model = model
         self.seat_service = seat_service

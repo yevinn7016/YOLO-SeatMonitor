@@ -6,6 +6,9 @@ from backend.domain.models import SeatRoi, SeatStatus
 
 PERSON_CLASSES = {"person"}
 BELONGING_CLASSES = {"backpack", "handbag", "suitcase", "book", "laptop"}
+YOLO_MIN_CONFIDENCE = 0.25
+PERSON_MIN_CONFIDENCE = 0.35
+BELONGING_MIN_CONFIDENCE = 0.25
 
 
 # 지정한 경로에서 YOLO 모델을 불러온다.
@@ -40,7 +43,7 @@ def format_yolo_results(results) -> list[dict]:
 
 
 # 카메라 프레임에서 신뢰도 기준 이상의 객체를 탐지한다.
-def detect_frame(model, frame, confidence: float = 0.35) -> list[dict]:
+def detect_frame(model, frame, confidence: float = YOLO_MIN_CONFIDENCE) -> list[dict]:
     """OpenCV의 NumPy frame을 바로 YOLO에 전달한다."""
 
     results = model(frame, conf=confidence, verbose=False)
@@ -111,13 +114,16 @@ def assign_detections_to_seats(
 
 # 좌석에서 감지된 객체를 바탕으로 즉시 상태를 판단한다.
 def decide_instant_status(detections: list[dict]) -> str:
-    class_names = set()
-
-    for detection in detections:
-        class_names.add(detection["class_name"])
-
-    has_person = bool(class_names & PERSON_CLASSES)
-    has_belongings = bool(class_names & BELONGING_CLASSES)
+    has_person = any(
+        detection["class_name"] in PERSON_CLASSES
+        and float(detection.get("confidence", 1.0)) >= PERSON_MIN_CONFIDENCE
+        for detection in detections
+    )
+    has_belongings = any(
+        detection["class_name"] in BELONGING_CLASSES
+        and float(detection.get("confidence", 1.0)) >= BELONGING_MIN_CONFIDENCE
+        for detection in detections
+    )
 
     if has_person:
         return "occupied"

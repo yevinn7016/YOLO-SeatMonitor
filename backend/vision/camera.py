@@ -15,14 +15,14 @@ def parse_camera_source(source: str) -> int | str:
 
 
 class CameraWorker:
-    """카메라 프레임을 계속 읽고 2초마다 현재 ROI를 분석한다."""
+    """카메라 프레임을 계속 읽고 1초마다 현재 ROI를 분석한다."""
 
     def __init__(
         self,
         source: str,
         model,
         seat_service: SeatService,
-        inference_interval: float = 2.0,
+        inference_interval: float = 1.0,
         inference_lock=None,
     ) -> None:
         self.source = source
@@ -149,7 +149,7 @@ class CameraWorker:
         self._release_current_capture()
         self._set_camera_state(connected=False, error=None)
 
-    # 2초마다 최신 프레임의 복사본만 가져와 분석한다.
+    # 1초마다 최신 프레임의 복사본만 가져와 분석한다.
     def _run_inference(self) -> None:
         while not self._stop_event.wait(self.inference_interval):
             frame = self._get_latest_frame()
