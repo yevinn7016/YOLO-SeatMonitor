@@ -50,3 +50,41 @@ class SeatStatus(BaseModel):
 
 class Settings(BaseModel):
     noshow_threshold_seconds: int = Field(default=600, ge=1)
+
+
+class DemoModeResponse(BaseModel):
+    mode: Literal["camera", "demo"]
+    status: str
+
+
+class DemoVideoInfo(BaseModel):
+    video_id: str
+    filename: str
+    status: Literal["uploaded"] = "uploaded"
+    duration_seconds: float = Field(ge=0)
+    fps: float = Field(gt=0)
+    total_frames: int = Field(ge=0)
+
+
+class DemoStartRequest(BaseModel):
+    video_id: str = Field(min_length=1)
+
+
+class DemoStatus(BaseModel):
+    mode: Literal["camera", "demo"]
+    video_id: str | None = None
+    filename: str | None = None
+    status: Literal[
+        "idle",
+        "uploaded",
+        "playing",
+        "completed",
+        "stopped",
+        "error",
+    ]
+    current_frame: int = Field(default=0, ge=0)
+    total_frames: int = Field(default=0, ge=0)
+    current_seconds: float = Field(default=0, ge=0)
+    duration_seconds: float = Field(default=0, ge=0)
+    progress: float = Field(default=0, ge=0, le=100)
+    error: str | None = None

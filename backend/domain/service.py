@@ -39,8 +39,12 @@ class SeatService:
     def replace_layout(self, layout: Layout) -> Layout:
         save_layout(layout)
 
+        return self.activate_layout(layout)
+
+    # 저장 파일을 건드리지 않고 현재 실행에서 사용할 좌석 배치만 교체한다.
+    def activate_layout(self, layout: Layout) -> Layout:
         with self._lock:
-            self._layout = layout
+            self._layout = layout.model_copy(deep=True)
             self._statuses = self._empty_statuses(layout)
             self._person_detected_since = {}
             self._away_started_at = {}

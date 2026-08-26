@@ -5,3 +5,5 @@ __pycache__/
 .env.local
 .local/
 data/layout.json
+data/demo_layout.json
+data/demo/

@@ -7,6 +7,7 @@ from backend.domain.models import Layout, Settings
 
 
 DEFAULT_LAYOUT_PATH = Path("data/layout.json")
+DEFAULT_DEMO_LAYOUT_PATH = Path("data/demo_layout.json")
 DEFAULT_SETTINGS_PATH = Path("data/settings.json")
 
 
@@ -32,6 +33,14 @@ def save_layout(layout: Layout, path: Path = DEFAULT_LAYOUT_PATH) -> None:
         json.dumps(data, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def load_demo_layout(path: Path = DEFAULT_DEMO_LAYOUT_PATH) -> Layout:
+    return load_layout(path)
+
+
+def save_demo_layout(layout: Layout, path: Path = DEFAULT_DEMO_LAYOUT_PATH) -> None:
+    save_layout(layout, path)
 
 
 def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> Settings:

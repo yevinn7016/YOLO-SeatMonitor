@@ -23,11 +23,13 @@ class CameraWorker:
         model,
         seat_service: SeatService,
         inference_interval: float = 2.0,
+        inference_lock=None,
     ) -> None:
         self.source = source
         self.model = model
         self.seat_service = seat_service
         self.inference_interval = inference_interval
+        self._inference_lock = inference_lock or Lock()
         self.running = False
         self._connected = False
         self._camera_error: str | None = None
@@ -161,7 +163,10 @@ class CameraWorker:
                 continue
 
             try:
-                statuses = analyze_frame(self.model, frame, layout.seats)
+                with self._inference_lock:
+                    statuses = analyze_frame(self.model, frame, layout.seats)
+                if self._stop_event.is_set():
+                    return
                 self.seat_service.update_statuses(statuses)
                 self._set_inference_error(None)
             except Exception as error:
