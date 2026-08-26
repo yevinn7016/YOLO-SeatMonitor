@@ -49,3 +49,26 @@ ROI 편집기에 바로 전달할 수 있는 구조입니다.
 후보를 확인한 후 기존 `PUT /api/layout`을 호출해야 실제로 저장됩니다.
 같은 API를 다시 호출하면 새로운 후보가 생성되므로 재시도 버튼도 별도의
 백엔드 상태 관리 없이 구현할 수 있습니다.
+
+## 6. 시연 영상 분석
+
+시연 페이지에서는 카메라 대신 업로드 영상을 원래 FPS로 재생하면서 같은
+프레임을 실제 YOLO 모델로 분석합니다. 영상용 ROI는 카메라용 ROI와 별도로
+`data/demo_layout.json`에 저장됩니다.
+
+프론트 연결 순서는 다음과 같습니다.
+
+```text
+POST /api/demo/enter
+POST /api/demo/video
+GET  /api/demo/preview.jpg
+PUT  /api/demo/layout
+GET  /api/seats/stream
+GET  /api/demo/stream
+POST /api/demo/start
+```
+
+`/api/demo/stream`은 MJPEG 영상이며, 좌석 상태는 기존 SSE인
+`/api/seats/stream`으로 전달됩니다. 시연 페이지를 나갈 때
+`POST /api/demo/exit`을 호출하면 임시 영상을 지우고 카메라 분석을 다시
+시작합니다.
