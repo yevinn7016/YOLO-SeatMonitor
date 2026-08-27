@@ -1,3 +1,4 @@
+//앱의 기본 대시보드 화면이 정상적으로 표시되는지 검사 코드
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'

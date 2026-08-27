@@ -20,10 +20,11 @@ export function useLayoutQuery() {
 }
 
 // 전체 좌석의 현재 상태 조회
-export function useSeatsQuery() {
+export function useSeatsQuery(enabled = true) {
   return useQuery({
     queryKey: queryKeys.seats,
     queryFn: seatApi.getSeats,
+    enabled,
   })
 }
 
@@ -60,6 +61,14 @@ export function useSaveLayoutMutation() {
   return useMutation({
     mutationFn: (layout: SeatLayout) => seatApi.saveLayout(layout),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.layout }),
+  })
+}
+
+export function useCreateLayoutSuggestionMutation() {
+  return useMutation({
+    mutationFn: ({ image, additionalInstructions }: { image: Blob; additionalInstructions?: string }) => (
+      seatApi.createLayoutSuggestion(image, additionalInstructions)
+    ),
   })
 }
 

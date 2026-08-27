@@ -28,6 +28,7 @@ export function SeatRoiEditor({ imageUrl, regions, onChange, selectedId, onSelec
   const containerRef = useRef<HTMLDivElement>(null)
   const [image, setImage] = useState<HTMLImageElement | null>(null)
   const [width, setWidth] = useState(800)
+  const [height, setHeight] = useState(450)
   const [draftPoints, setDraftPoints] = useState<Point[]>([])
   const [pointer, setPointer] = useState<Point | null>(null)
 
@@ -41,7 +42,10 @@ export function SeatRoiEditor({ imageUrl, regions, onChange, selectedId, onSelec
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
+    const observer = new ResizeObserver(([entry]) => {
+      setWidth(entry.contentRect.width)
+      setHeight(entry.contentRect.height)
+    })
     observer.observe(container)
     return () => observer.disconnect()
   }, [])
@@ -55,11 +59,18 @@ export function SeatRoiEditor({ imageUrl, regions, onChange, selectedId, onSelec
     return () => window.cancelAnimationFrame(frameId)
   }, [drawingEnabled])
 
-  const height = image ? width * (image.naturalHeight / image.naturalWidth) : width * 0.5625
+  const imageScale = image ? Math.min(width / image.naturalWidth, height / image.naturalHeight) : 1
+  const imageWidth = image ? image.naturalWidth * imageScale : width
+  const imageHeight = image ? image.naturalHeight * imageScale : height
+  const imageOffsetX = (width - imageWidth) / 2
+  const imageOffsetY = (height - imageHeight) / 2
   //마우스 터치 위치를 캔버스 픽셀 좌표에서 이미지 크기와 무관한 0~1 정규화 좌표로 변환
   const getPosition = (event: KonvaEventObject<MouseEvent | TouchEvent>): Point | null => {
     const position = event.target.getStage()?.getPointerPosition()
-    return position ? { x: clamp(position.x / width, 0, 1), y: clamp(position.y / height, 0, 1) } : null
+    return position ? {
+      x: clamp((position.x - imageOffsetX) / imageWidth, 0, 1),
+      y: clamp((position.y - imageOffsetY) / imageHeight, 0, 1),
+    } : null
   }
 
 
@@ -87,7 +98,7 @@ export function SeatRoiEditor({ imageUrl, regions, onChange, selectedId, onSelec
     if (!position) return
 
     const first = draftPoints[0]
-    const closeToFirst = first && Math.hypot((position.x - first.x) * width, (position.y - first.y) * height) <= 14 // 현재 위치가 첫 번째 꼭짓점과 14px 이내이고
+    const closeToFirst = first && Math.hypot((position.x - first.x) * imageWidth, (position.y - first.y) * imageHeight) <= 14 // 현재 위치가 첫 번째 꼭짓점과 14px 이내이고
     if (closeToFirst && draftPoints.length >= 3) { // 꼭짓점이 3개 이상이면 다각형을 닫고 ROI 생성을 완료
       finishPolygon()
       return
@@ -106,7 +117,7 @@ export function SeatRoiEditor({ imageUrl, regions, onChange, selectedId, onSelec
     onChange(regions.map((region) => region.id === regionId ? {
       ...region,
       points: region.points.map((point, index) => index === pointIndex
-        ? { x: clamp(x / width, 0, 1), y: clamp(y / height, 0, 1) }
+        ? { x: clamp((x - imageOffsetX) / imageWidth, 0, 1), y: clamp((y - imageOffsetY) / imageHeight, 0, 1) }
         : point),
     } : region))
   }
@@ -120,8 +131,8 @@ export function SeatRoiEditor({ imageUrl, regions, onChange, selectedId, onSelec
     const minY = Math.min(...region.points.map((point) => point.y))
     const maxY = Math.max(...region.points.map((point) => point.y))
     //전체 폴리곤이 0~1 범위 밖으로 이동하지 않도록 드래그 범위를 계산
-    const normalizedX = clamp(deltaX / width, -minX, 1 - maxX)
-    const normalizedY = clamp(deltaY / height, -minY, 1 - maxY)
+    const normalizedX = clamp(deltaX / imageWidth, -minX, 1 - maxX)
+    const normalizedY = clamp(deltaY / imageHeight, -minY, 1 - maxY)
     onChange(regions.map((item) => item.id === regionId ? {
       ...item,
       points: item.points.map((point) => ({ x: point.x + normalizedX, y: point.y + normalizedY })),
@@ -131,13 +142,13 @@ export function SeatRoiEditor({ imageUrl, regions, onChange, selectedId, onSelec
   const draftLine = pointer && draftPoints.length > 0 ? [...draftPoints, pointer] : draftPoints
 
   return (
-    <div ref={containerRef} className="w-full overflow-hidden bg-slate-950 touch-none">
+    <div ref={containerRef} className="size-full overflow-hidden bg-slate-950 touch-none">
       <Stage width={width} height={height} className={drawingEnabled ? 'cursor-crosshair' : 'cursor-default'} onClick={addPoint} onTap={addPoint} onMouseMove={updatePointer} onTouchMove={updatePointer}>
         <Layer>
-          {image && <KonvaImage image={image} width={width} height={height} listening={false} />}
+          {image && <KonvaImage image={image} x={imageOffsetX} y={imageOffsetY} width={imageWidth} height={imageHeight} listening={false} />}
           {regions.map((region) => {
-            const labelX = Math.min(...region.points.map((point) => point.x)) * width
-            const labelY = Math.min(...region.points.map((point) => point.y)) * height
+            const labelX = imageOffsetX + Math.min(...region.points.map((point) => point.x)) * imageWidth
+            const labelY = imageOffsetY + Math.min(...region.points.map((point) => point.y)) * imageHeight
             return (
               <Group key={region.id}>
                 <Group
@@ -149,14 +160,14 @@ export function SeatRoiEditor({ imageUrl, regions, onChange, selectedId, onSelec
                     event.target.position({ x: 0, y: 0 })
                   }}
                 >
-                  <Line points={flattenPoints(region.points, width, height)} closed fill="rgba(14, 165, 233, 0.2)" stroke={selectedId === region.id ? '#f59e0b' : '#0ea5e9'} strokeWidth={selectedId === region.id ? 3 : 2} />
+                  <Line x={imageOffsetX} y={imageOffsetY} points={flattenPoints(region.points, imageWidth, imageHeight)} closed fill="rgba(14, 165, 233, 0.2)" stroke={selectedId === region.id ? '#f59e0b' : '#0ea5e9'} strokeWidth={selectedId === region.id ? 3 : 2} />
                   <Text x={labelX + 6} y={labelY + 6} text={region.label} fontSize={12} fontStyle="bold" fill="white" listening={false} shadowColor="black" shadowBlur={3} />
                 </Group>
                 {selectedId === region.id && !drawingEnabled && region.points.map((point, index) => (
                   <Circle
                     key={`${region.id}-point-${index}`}
-                    x={point.x * width}
-                    y={point.y * height}
+                    x={imageOffsetX + point.x * imageWidth}
+                    y={imageOffsetY + point.y * imageHeight}
                     radius={6}
                     fill="#fff"
                     stroke="#f59e0b"
@@ -169,8 +180,8 @@ export function SeatRoiEditor({ imageUrl, regions, onChange, selectedId, onSelec
               </Group>
             )
           })}
-          {draftLine.length > 0 && <Line points={flattenPoints(draftLine, width, height)} closed={draftPoints.length >= 3} fill="rgba(16, 185, 129, 0.18)" stroke="#10b981" strokeWidth={2} dash={[7, 5]} listening={false} />}
-          {draftPoints.map((point, index) => <Circle key={`draft-${index}`} x={point.x * width} y={point.y * height} radius={index === 0 ? 7 : 5} fill={index === 0 ? '#fbbf24' : '#fff'} stroke="#10b981" strokeWidth={2} listening={false} />)}
+          {draftLine.length > 0 && <Line x={imageOffsetX} y={imageOffsetY} points={flattenPoints(draftLine, imageWidth, imageHeight)} closed={draftPoints.length >= 3} fill="rgba(16, 185, 129, 0.18)" stroke="#10b981" strokeWidth={2} dash={[7, 5]} listening={false} />}
+          {draftPoints.map((point, index) => <Circle key={`draft-${index}`} x={imageOffsetX + point.x * imageWidth} y={imageOffsetY + point.y * imageHeight} radius={index === 0 ? 7 : 5} fill={index === 0 ? '#fbbf24' : '#fff'} stroke="#10b981" strokeWidth={2} listening={false} />)}
         </Layer>
       </Stage>
       {drawingEnabled && (

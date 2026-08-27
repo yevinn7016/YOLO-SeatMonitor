@@ -6,7 +6,7 @@ import type { SeatState } from '@/types/seat'
 
 export type SeatEventConnectionState = 'connecting' | 'open' | 'closed'
 
-export function useSeatEvents() {
+export function useSeatEvents(enabled = true) {
   const queryClient = useQueryClient()
 
   //SSE 연결 상태를 관리하여 서버와의 실시간 연결 여부를 확인
@@ -16,7 +16,7 @@ export function useSeatEvents() {
 
   useEffect(() => {
     //브라우저가 SSE(EventSource)를 지원하지 않는 경우 연결하지 않음
-    if (typeof EventSource === 'undefined') return
+    if (!enabled || typeof EventSource === 'undefined') return
 
     const events = new EventSource(getApiUrl('/seats/stream'))
 
@@ -35,7 +35,7 @@ export function useSeatEvents() {
     events.onerror = () => setState('closed')
 
     return () => events.close()
-  }, [queryClient])
+  }, [enabled, queryClient])
 
   return state
 }

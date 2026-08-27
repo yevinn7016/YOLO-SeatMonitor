@@ -1,14 +1,31 @@
-import { Camera, LayoutDashboard, LogOut, Settings2 } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+//사이드바, 메뉴와 실제 페이지가 들어가는 공통 레이아웃 코드
+import { Camera, Clapperboard, LayoutDashboard, LogOut, Settings2 } from 'lucide-react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import seatMonitorLogo from '@/assets/library-seat-logo.png'
+import { demoApi } from '@/services/demo-api'
 
 const links = [
   { to: '/', label: '좌석 현황', icon: LayoutDashboard },
   { to: '/seat-settings', label: '좌석 영역 설정', icon: Camera },
+  { to: '/demo', label: '데모 구현', icon: Clapperboard },
 ]
 
 export function AppShell() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  const leaveDemo = async (event: React.MouseEvent<HTMLAnchorElement>, to: string) => {
+    if (location.pathname !== '/demo' || to === '/demo') return
+    event.preventDefault()
+    try {
+      await demoApi.exitDemo()
+      navigate(to)
+    } catch {
+      // Keep the demo page open when camera mode could not be restored.
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#f5f7fb] lg:grid lg:grid-cols-[240px_1fr]">
       <aside className="border-b border-slate-200 bg-white px-5 py-4 lg:fixed lg:inset-y-0 lg:w-60 lg:border-b-0 lg:border-r lg:py-7">
@@ -18,7 +35,7 @@ export function AppShell() {
         </div>
         <nav className="mt-7 flex gap-2 lg:flex-col">
           {links.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => cn('flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium', isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-500 hover:bg-slate-50')}>
+            <NavLink key={to} to={to} end={to === '/'} onClick={(event) => leaveDemo(event, to)} className={({ isActive }) => cn('flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium', isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-500 hover:bg-slate-50')}>
               <Icon size={18} />{label}
             </NavLink>
           ))}

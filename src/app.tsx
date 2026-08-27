@@ -3,7 +3,8 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/layout/app-shell'
 import { DashboardPage } from '@/pages/dashboard-page'
 import { SeatSettingsPage } from '@/pages/seat-settings-page'
+import { DemoPage } from '@/pages/demo-page'
 
 export function App() {
-  return <Routes><Route element={<AppShell />}><Route index element={<DashboardPage />} /><Route path="seat-settings" element={<SeatSettingsPage />} /></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes>
+  return <Routes><Route element={<AppShell />}><Route index element={<DashboardPage />} /><Route path="seat-settings" element={<SeatSettingsPage />} /><Route path="demo" element={<DemoPage />} /></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes>
 }

@@ -37,7 +37,20 @@ export interface HealthStatus {
   camera_connected: boolean
   camera_error: string | null
   roi_configured: boolean
+  roi_suggestion_available: boolean
   seat_count: number
+}
+
+export interface LayoutSuggestionResponse {
+  suggestion_id: string
+  provider: string
+  model: string
+  generated_at: string
+  image_width: number
+  image_height: number
+  is_saved: boolean
+  layout: SeatLayout
+  warnings: string[]
 }
 
 export interface NoShowSettings {

@@ -1,3 +1,4 @@
+//React 앱 생성 및 Router와 React Query 연결
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
