@@ -58,7 +58,7 @@
       font-weight: 800;
     }
 
-    input[type="text"], input[type="file"] {
+    input[type="text"], input[type="file"], input[type="number"] {
       width: 100%;
       min-height: 42px;
       padding: 8px 11px;
@@ -89,6 +89,21 @@
       flex-wrap: wrap;
       gap: 7px;
       padding: 0 15px 15px;
+    }
+
+    .settings-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 260px) auto auto minmax(220px, 1fr);
+      gap: 10px;
+      align-items: end;
+      padding: 14px 15px;
+      border-top: 1px solid var(--line);
+    }
+
+    .settings-meta {
+      align-self: center;
+      color: var(--muted);
+      font-size: 12px;
     }
 
     .badge {
@@ -303,7 +318,7 @@
     }
 
     @media (max-width: 980px) {
-      .topbar, .upload-row, .editor-grid, .live-grid { grid-template-columns: 1fr; }
+      .topbar, .settings-row, .upload-row, .editor-grid, .live-grid { grid-template-columns: 1fr; }
       .canvas-shell { min-height: 300px; }
     }
   </style>
@@ -328,6 +343,14 @@
         <span id="modeBadge" class="badge">모드 확인 전</span>
         <span id="videoBadge" class="badge">영상 없음</span>
         <span id="sseBadge" class="badge">SSE 미연결</span>
+      </div>
+      <div class="settings-row">
+        <label class="field">노쇼 기준 시간(초)
+          <input id="noshowThresholdInput" type="number" min="1" step="1" value="600" />
+        </label>
+        <button id="loadSettingsButton" class="ghost">설정 불러오기</button>
+        <button id="saveSettingsButton" class="secondary">노쇼 기준 저장</button>
+        <div id="settingsMeta" class="settings-meta">현재 설정을 불러오는 중입니다.</div>
       </div>
     </section>
 
@@ -424,6 +447,8 @@
     const logOutput = $('#logOutput')
     const videoProgress = $('#videoProgress')
     const progressText = $('#progressText')
+    const noshowThresholdInput = $('#noshowThresholdInput')
+    const settingsMeta = $('#settingsMeta')
 
     let demoMode = false
     let videoInfo = null
@@ -476,6 +501,50 @@
     function formatTime(seconds = 0) {
       const total = Math.max(0, Math.floor(seconds))
       return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+    }
+
+    function describeThreshold(seconds) {
+      if (seconds < 60) return `${seconds}초`
+      const minutes = Math.floor(seconds / 60)
+      const remainder = seconds % 60
+      return remainder ? `${minutes}분 ${remainder}초` : `${minutes}분`
+    }
+
+    async function loadSettings(writeLog = true) {
+      try {
+        const settings = await request('/api/settings')
+        const seconds = settings.noshow_threshold_seconds
+        noshowThresholdInput.value = seconds
+        settingsMeta.textContent = `현재 노쇼 기준: ${describeThreshold(seconds)} · 자리 비움 상태가 이 시간을 넘으면 noshow로 변경됩니다.`
+        if (writeLog) log(`노쇼 기준 설정 불러옴: ${describeThreshold(seconds)}`)
+        return settings
+      } catch (error) {
+        settingsMeta.textContent = '설정을 불러오지 못했습니다.'
+        showError(error)
+      }
+    }
+
+    async function saveSettings() {
+      clearError()
+      const seconds = Number(noshowThresholdInput.value)
+      if (!Number.isInteger(seconds) || seconds < 1) {
+        showError(new Error('노쇼 기준 시간은 1초 이상의 정수로 입력해 주세요.'))
+        return
+      }
+
+      const button = $('#saveSettingsButton')
+      button.disabled = true
+      try {
+        const settings = await request('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ noshow_threshold_seconds: seconds }),
+        })
+        noshowThresholdInput.value = settings.noshow_threshold_seconds
+        settingsMeta.textContent = `현재 노쇼 기준: ${describeThreshold(settings.noshow_threshold_seconds)} · 다음 분석부터 적용됩니다.`
+        log(`노쇼 기준 저장 완료: ${describeThreshold(settings.noshow_threshold_seconds)}`)
+      } catch (error) { showError(error) }
+      finally { button.disabled = false }
     }
 
     async function checkHealth() {
@@ -1043,6 +1112,8 @@
     }
 
     $('#healthButton').addEventListener('click', checkHealth)
+    $('#loadSettingsButton').addEventListener('click', () => loadSettings(true))
+    $('#saveSettingsButton').addEventListener('click', saveSettings)
     $('#cameraButton').addEventListener('click', startCameraTest)
     $('#cameraPreviewButton').addEventListener('click', () => loadCameraPreview().catch(showError))
     $('#enterButton').addEventListener('click', enterDemo)
@@ -1079,6 +1150,7 @@
     setSourceLabels()
     updateControls()
     checkHealth()
+    loadSettings(false)
   </script>
 </body>
 </html>
