@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>카메라 · 시연 영상 · ROI · 좌석 상태 통합 테스트</title>
+  <style>
+    :root {
+      font-family: Inter, Pretendard, "Noto Sans KR", sans-serif;
+      color: #172033;
+      background: #eef3f8;
+      --blue: #2563eb;
+      --line: #dce4ee;
+      --muted: #64748b;
+      --danger: #dc2626;
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; }
+    button, input { font: inherit; }
+
+    main {
+      width: min(1480px, calc(100% - 28px));
+      margin: 22px auto 56px;
+    }
+
+    h1 { margin: 0; font-size: 26px; letter-spacing: -.03em; }
+    h2 { margin: 0; font-size: 17px; }
+    p { line-height: 1.6; }
+
+    .lead {
+      margin: 8px 0 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 8px 26px rgb(29 52 80 / 7%);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) repeat(4, auto);
+      gap: 10px;
+      align-items: end;
+      padding: 15px;
+    }
+
+    label.field {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    input[type="text"], input[type="file"] {
+      width: 100%;
+      min-height: 42px;
+      padding: 8px 11px;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    button {
+      min-height: 42px;
+      padding: 0 15px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    button.secondary { background: #475569; }
+    button.success { background: #15803d; }
+    button.danger { background: #b91c1c; }
+    button.ghost { background: #e8eef6; color: #334155; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      padding: 0 15px 15px;
+    }
+
+    .badge {
+      padding: 6px 9px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .badge.good { background: #dcfce7; color: #166534; }
+    .badge.warn { background: #fef3c7; color: #92400e; }
+    .badge.bad { background: #fee2e2; color: #991b1b; }
+
+    .step {
+      margin-top: 14px;
+      padding: 16px;
+    }
+
+    .step-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .step-number {
+      display: inline-grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-size: 13px;
+    }
+
+    .upload-row {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .meta {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #f8fafc;
+      color: #475569;
+      font: 13px/1.6 Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    .editor-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 370px;
+      gap: 14px;
+    }
+
+    .canvas-shell {
+      min-height: 430px;
+      display: grid;
+      place-items: center;
+      overflow: auto;
+      padding: 10px;
+      border-radius: 12px;
+      background: #0f172a;
+    }
+
+    #roiCanvas {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      cursor: crosshair;
+      background: #020617;
+    }
+
+    .editor-side {
+      display: grid;
+      align-content: start;
+      gap: 11px;
+    }
+
+    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .button-row button { min-height: 38px; font-size: 13px; }
+
+    .hint {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #eff6ff;
+      color: #1e40af;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .seat-editor-list {
+      display: grid;
+      gap: 7px;
+      max-height: 340px;
+      overflow: auto;
+    }
+
+    .seat-editor {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 7px;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #f8fafc;
+    }
+
+    .seat-editor input {
+      min-width: 0;
+      height: 34px;
+      padding: 0 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+    }
+
+    .seat-editor button { min-height: 34px; padding: 0 10px; }
+
+    .live-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(360px, .75fr);
+      gap: 14px;
+    }
+
+    .video-column { min-width: 0; }
+    .stream-stage {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      border-radius: 12px;
+      background: #020617;
+      aspect-ratio: 16 / 9;
+    }
+
+    #demoStream {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    #streamOverlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .play-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 11px;
+    }
+
+    .progress-wrap { margin-top: 12px; }
+    progress { width: 100%; height: 12px; accent-color: var(--blue); }
+    .progress-text { margin-top: 5px; color: var(--muted); font-size: 12px; }
+
+    .seat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+      max-height: 590px;
+      overflow: auto;
+    }
+
+    .seat-card {
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-left: 5px solid #94a3b8;
+      border-radius: 11px;
+      background: #fff;
+    }
+
+    .seat-card.empty { border-left-color: #22c55e; background: #f0fdf4; }
+    .seat-card.occupied { border-left-color: #ef4444; background: #fff1f2; }
+    .seat-card.away { border-left-color: #f59e0b; background: #fffbeb; }
+    .seat-card.noshow { border-left-color: #7c3aed; background: #f5f3ff; }
+    .seat-card strong { display: block; font-size: 14px; }
+    .seat-state { margin: 5px 0; font-size: 13px; font-weight: 850; }
+    .seat-detail { color: var(--muted); font-size: 11px; line-height: 1.45; }
+
+    .log {
+      max-height: 170px;
+      overflow: auto;
+      margin-top: 14px;
+      padding: 11px;
+      border-radius: 10px;
+      background: #111827;
+      color: #cbd5e1;
+      font: 12px/1.55 Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    .error {
+      min-height: 20px;
+      margin-top: 10px;
+      color: var(--danger);
+      font-size: 13px;
+      font-weight: 800;
+      white-space: pre-wrap;
+    }
+
+    @media (max-width: 980px) {
+      .topbar, .upload-row, .editor-grid, .live-grid { grid-template-columns: 1fr; }
+      .canvas-shell { min-height: 300px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>카메라 · 시연 영상 통합 테스트</h1>
+    <p class="lead">실시간 카메라 또는 업로드 영상 → ROI 설정 → 실제 YOLO 분석 → 좌석 상태 SSE 반영을 한 화면에서 확인합니다. 이 페이지는 <code>.local/</code>에 있어 커밋되지 않습니다.</p>
+
+    <section class="panel">
+      <div class="topbar">
+        <label class="field">백엔드 주소
+          <input id="apiBase" type="text" value="http://127.0.0.1:8000" />
+        </label>
+        <button id="healthButton" class="ghost">서버 확인</button>
+        <button id="cameraButton" class="success">실시간 카메라 테스트</button>
+        <button id="enterButton">시연 모드 진입</button>
+        <button id="exitButton" class="danger">시연 종료 · 카메라 복귀</button>
+      </div>
+      <div class="badges">
+        <span id="serverBadge" class="badge">서버 확인 전</span>
+        <span id="modeBadge" class="badge">모드 확인 전</span>
+        <span id="videoBadge" class="badge">영상 없음</span>
+        <span id="sseBadge" class="badge">SSE 미연결</span>
+      </div>
+    </section>
+
+    <section class="panel step">
+      <div class="step-head"><h2 id="sourceHeading"><span class="step-number">1</span>테스트 소스 준비</h2></div>
+      <div class="button-row">
+        <button id="cameraPreviewButton" class="secondary">현재 카메라 프레임 다시 캡처</button>
+      </div>
+      <div id="videoUploadRow" class="upload-row">
+        <label class="field">영상 파일
+          <input id="videoInput" type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mkv,.m4v" />
+        </label>
+        <button id="uploadButton" disabled>영상 업로드</button>
+      </div>
+      <div id="videoMeta" class="meta">먼저 시연 모드에 진입한 뒤 영상을 선택해 주세요.</div>
+    </section>
+
+    <section class="panel step">
+      <div class="step-head"><h2 id="roiHeading"><span class="step-number">2</span>캡처 프레임에서 ROI 설정</h2></div>
+      <div class="editor-grid">
+        <div class="canvas-shell">
+          <canvas id="roiCanvas" width="960" height="540"></canvas>
+        </div>
+        <div class="editor-side">
+          <div class="hint">
+            좌석 영역의 꼭짓점을 순서대로 클릭하세요. 점이 3개 이상일 때 첫 점을 다시 누르거나 “도형 완성”을 누르면 ROI가 만들어집니다.
+          </div>
+          <label class="field">Gemini 추가 지시(선택)
+            <input id="aiInstructions" type="text" maxlength="500" placeholder="예: 오른쪽 뒤편 좌석까지 포함해줘" />
+          </label>
+          <div class="button-row">
+            <button id="aiButton" disabled>Gemini 후보</button>
+            <button id="loadLayoutButton" class="ghost">저장 ROI 불러오기</button>
+          </div>
+          <div class="button-row">
+            <button id="finishPolygonButton" class="secondary" disabled>도형 완성</button>
+            <button id="undoPointButton" class="ghost" disabled>마지막 점 취소</button>
+            <button id="cancelPolygonButton" class="ghost" disabled>그리기 취소</button>
+            <button id="clearRoiButton" class="danger">ROI 전체 삭제</button>
+          </div>
+          <div id="seatEditorList" class="seat-editor-list"></div>
+          <button id="saveLayoutButton" class="success" disabled>ROI 저장</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel step">
+      <div class="step-head"><h2 id="liveHeading"><span class="step-number">3</span>실시간 화면과 좌석 상태 확인</h2></div>
+      <div class="live-grid">
+        <div class="video-column">
+          <div id="streamStage" class="stream-stage">
+            <img id="demoStream" alt="카메라 또는 시연 영상 스트림" />
+            <svg id="streamOverlay" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
+          </div>
+          <div class="play-controls">
+            <button id="startButton" class="success" disabled>처음부터 분석 시작</button>
+            <button id="stopButton" class="secondary" disabled>분석 중지</button>
+            <button id="resetTimersButton" class="ghost">전체 타이머 초기화</button>
+          </div>
+          <div class="progress-wrap">
+            <progress id="videoProgress" value="0" max="100"></progress>
+            <div id="progressText" class="progress-text">재생 대기</div>
+          </div>
+        </div>
+        <div>
+          <div id="seatGrid" class="seat-grid"></div>
+          <div id="seatEmpty" class="hint">SSE가 연결되면 현재 좌석 상태가 여기에 표시됩니다.</div>
+        </div>
+      </div>
+      <div id="errorOutput" class="error"></div>
+      <div id="logOutput" class="log">페이지 준비 완료</div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (selector) => document.querySelector(selector)
+    const apiBase = $('#apiBase')
+    const serverBadge = $('#serverBadge')
+    const modeBadge = $('#modeBadge')
+    const videoBadge = $('#videoBadge')
+    const sseBadge = $('#sseBadge')
+    const videoInput = $('#videoInput')
+    const uploadButton = $('#uploadButton')
+    const videoMeta = $('#videoMeta')
+    const canvas = $('#roiCanvas')
+    const ctx = canvas.getContext('2d')
+    const seatEditorList = $('#seatEditorList')
+    const demoStream = $('#demoStream')
+    const streamStage = $('#streamStage')
+    const streamOverlay = $('#streamOverlay')
+    const seatGrid = $('#seatGrid')
+    const seatEmpty = $('#seatEmpty')
+    const errorOutput = $('#errorOutput')
+    const logOutput = $('#logOutput')
+    const videoProgress = $('#videoProgress')
+    const progressText = $('#progressText')
+
+    let demoMode = false
+    let videoInfo = null
+    let previewBlob = null
+    let previewImage = null
+    let layout = { version: 1, seats: [] }
+    let draftPoints = []
+    let statuses = []
+    let eventSource = null
+    let statusTimer = null
+    let streamConnected = false
+    let cameraStreaming = false
+    let cameraStreamTimer = null
+
+    const url = (path) => `${apiBase.value.trim().replace(/\/$/, '')}${path}`
+
+    function badge(element, text, type = '') {
+      element.textContent = text
+      element.className = `badge ${type}`.trim()
+    }
+
+    function log(message) {
+      const timestamp = new Date().toLocaleTimeString('ko-KR', { hour12: false })
+      logOutput.textContent = `[${timestamp}] ${message}\n${logOutput.textContent}`.slice(0, 8000)
+    }
+
+    function showError(error) {
+      errorOutput.textContent = error?.message ?? String(error)
+      log(`오류: ${errorOutput.textContent}`)
+    }
+
+    function clearError() { errorOutput.textContent = '' }
+
+    async function errorMessage(response) {
+      try {
+        const body = await response.json()
+        return typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail ?? body)
+      } catch {
+        return `${response.status} ${response.statusText}`
+      }
+    }
+
+    async function request(path, options = {}) {
+      const response = await fetch(url(path), options)
+      if (!response.ok) throw new Error(await errorMessage(response))
+      const type = response.headers.get('content-type') ?? ''
+      return type.includes('application/json') ? response.json() : response
+    }
+
+    function formatTime(seconds = 0) {
+      const total = Math.max(0, Math.floor(seconds))
+      return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+    }
+
+    async function checkHealth() {
+      clearError()
+      try {
+        const health = await request('/api/health')
+        badge(serverBadge, '백엔드 연결됨', 'good')
+        demoMode = health.active_source === 'demo'
+        badge(modeBadge, demoMode ? `시연 모드 · ${health.demo_status}` : '카메라 모드', demoMode ? 'warn' : 'good')
+        uploadButton.disabled = !demoMode || !videoInput.files?.length
+        if (demoMode) startStatusPolling()
+        setSourceLabels()
+        log(`서버 확인: ${health.active_source} 모드`)
+      } catch (error) {
+        badge(serverBadge, '백엔드 연결 실패', 'bad')
+        showError(error)
+      }
+    }
+
+    async function enterDemo() {
+      clearError()
+      try {
+        stopCameraStream()
+        demoStream.removeAttribute('src')
+        const result = await request('/api/demo/enter', { method: 'POST' })
+        demoMode = true
+        videoInfo = null
+        previewBlob = null
+        previewImage = null
+        layout = { version: 1, seats: [] }
+        draftPoints = []
+        badge(modeBadge, `시연 모드 · ${result.status}`, 'warn')
+        uploadButton.disabled = !videoInput.files?.length
+        setSourceLabels()
+        renderAllRoi()
+        await loadActiveLayout(false)
+        connectSeatEvents()
+        startStatusPolling()
+        log('시연 모드 진입 · 카메라 분석 중지')
+      } catch (error) { showError(error) }
+    }
+
+    async function exitDemo() {
+      clearError()
+      try {
+        const result = await request('/api/demo/exit', { method: 'POST' })
+        demoMode = false
+        stopStatusPolling()
+        disconnectSeatEvents()
+        stopCameraStream()
+        demoStream.removeAttribute('src')
+        streamConnected = false
+        videoInfo = null
+        previewBlob = null
+        previewImage = null
+        statuses = []
+        badge(modeBadge, '카메라 모드', 'good')
+        badge(videoBadge, '영상 없음')
+        setSourceLabels()
+        await prepareCameraTest()
+        log(`시연 종료 · ${result.status} · 실시간 카메라 테스트 시작`)
+      } catch (error) { showError(error) }
+    }
+
+    async function startCameraTest() {
+      clearError()
+      try {
+        if (demoMode) await request('/api/demo/exit', { method: 'POST' })
+        demoMode = false
+        stopStatusPolling()
+        streamConnected = false
+        videoInfo = null
+        badge(modeBadge, '카메라 모드', 'good')
+        badge(videoBadge, '실시간 카메라', 'good')
+        setSourceLabels()
+        await prepareCameraTest()
+        log('실시간 카메라 화면 및 YOLO 좌석 상태 테스트 시작')
+      } catch (error) { showError(error) }
+    }
+
+    async function prepareCameraTest() {
+      await loadActiveLayout(false)
+      await loadCameraPreview()
+      connectSeatEvents()
+      startCameraStream()
+      videoProgress.value = 0
+      progressText.textContent = '실시간 카메라 분석 중 · 1초마다 YOLO 추론'
+      renderSeats()
+      updateControls()
+    }
+
+    async function uploadVideo() {
+      const file = videoInput.files?.[0]
+      if (!file) return
+      clearError()
+      uploadButton.disabled = true
+      uploadButton.textContent = '업로드 중...'
+      try {
+        const form = new FormData()
+        form.append('video', file)
+        videoInfo = await request('/api/demo/video', { method: 'POST', body: form })
+        badge(videoBadge, `업로드됨 · ${videoInfo.filename}`, 'good')
+        videoMeta.textContent = [
+          `video_id: ${videoInfo.video_id}`,
+          `파일: ${videoInfo.filename}`,
+          `길이: ${formatTime(videoInfo.duration_seconds)} (${videoInfo.duration_seconds.toFixed(2)}초)`,
+          `FPS: ${videoInfo.fps.toFixed(2)} / 프레임: ${videoInfo.total_frames}`,
+        ].join('\n')
+        await loadPreview()
+        connectStream()
+        updateControls()
+        log(`영상 업로드 완료: ${videoInfo.filename}`)
+      } catch (error) { showError(error) }
+      finally {
+        uploadButton.textContent = '영상 업로드'
+        uploadButton.disabled = !demoMode || !videoInput.files?.length
+      }
+    }
+
+    async function loadPreview() {
+      const response = await fetch(`${url('/api/demo/preview.jpg')}?t=${Date.now()}`)
+      if (!response.ok) throw new Error(await errorMessage(response))
+      await setPreviewBlob(await response.blob())
+    }
+
+    async function loadCameraPreview() {
+      clearError()
+      const response = await fetch(`${url('/api/camera/frame.jpg')}?t=${Date.now()}`)
+      if (!response.ok) throw new Error(await errorMessage(response))
+      await setPreviewBlob(await response.blob())
+      log('현재 카메라 프레임을 ROI 편집 화면에 캡처')
+    }
+
+    async function setPreviewBlob(blob) {
+      previewBlob = blob
+      const objectUrl = URL.createObjectURL(previewBlob)
+      const image = new Image()
+      await new Promise((resolve, reject) => {
+        image.onload = resolve
+        image.onerror = reject
+        image.src = objectUrl
+      })
+      if (previewImage?.objectUrl) URL.revokeObjectURL(previewImage.objectUrl)
+      image.objectUrl = objectUrl
+      previewImage = image
+      canvas.width = image.naturalWidth
+      canvas.height = image.naturalHeight
+      streamStage.style.aspectRatio = `${image.naturalWidth} / ${image.naturalHeight}`
+      renderCanvas()
+      updateControls()
+    }
+
+    function normalizedPoint(event) {
+      const rect = canvas.getBoundingClientRect()
+      return {
+        x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+        y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
+      }
+    }
+
+    function pointDistanceInScreen(a, b) {
+      const rect = canvas.getBoundingClientRect()
+      return Math.hypot((a.x - b.x) * rect.width, (a.y - b.y) * rect.height)
+    }
+
+    function addPoint(event) {
+      if (!previewImage) return
+      const point = normalizedPoint(event)
+      if (draftPoints.length >= 3 && pointDistanceInScreen(point, draftPoints[0]) <= 16) {
+        finishPolygon()
+        return
+      }
+      draftPoints.push(point)
+      renderCanvas()
+      updateControls()
+    }
+
+    function nextSeatId() {
+      let index = 1
+      const used = new Set(layout.seats.map((seat) => seat.seat_id))
+      while (used.has(`T01-A-${String(index).padStart(2, '0')}`)) index += 1
+      return `T01-A-${String(index).padStart(2, '0')}`
+    }
+
+    function finishPolygon() {
+      if (draftPoints.length < 3) return
+      const seatId = nextSeatId()
+      layout.seats.push({ seat_id: seatId, label: seatId, polygon: [...draftPoints] })
+      draftPoints = []
+      renderAllRoi()
+      updateControls()
+      log(`ROI 추가: ${seatId}`)
+    }
+
+    function removeSeat(index) {
+      const [removed] = layout.seats.splice(index, 1)
+      renderAllRoi()
+      updateControls()
+      log(`ROI 삭제: ${removed?.seat_id ?? index}`)
+    }
+
+    function renderCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      if (previewImage) ctx.drawImage(previewImage, 0, 0, canvas.width, canvas.height)
+      else {
+        ctx.fillStyle = '#0f172a'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.fillStyle = '#94a3b8'
+        ctx.font = '700 22px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('카메라 테스트를 시작하거나 영상을 업로드해 주세요.', canvas.width / 2, canvas.height / 2)
+        ctx.textAlign = 'start'
+      }
+
+      layout.seats.forEach((seat, index) => drawPolygon(seat.polygon, seat.label, index, true))
+      if (draftPoints.length) drawPolygon(draftPoints, '작성 중', layout.seats.length, false)
+    }
+
+    function drawPolygon(points, label, index, closed) {
+      if (!points.length) return
+      const hue = (index * 67 + 205) % 360
+      ctx.beginPath()
+      points.forEach((point, i) => {
+        const x = point.x * canvas.width
+        const y = point.y * canvas.height
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      })
+      if (closed) ctx.closePath()
+      ctx.fillStyle = `hsl(${hue} 85% 55% / .22)`
+      ctx.strokeStyle = `hsl(${hue} 90% 60%)`
+      ctx.lineWidth = Math.max(2, canvas.width / 500)
+      if (closed) ctx.fill()
+      ctx.stroke()
+
+      points.forEach((point, i) => {
+        ctx.beginPath()
+        ctx.arc(point.x * canvas.width, point.y * canvas.height, Math.max(4, canvas.width / 260), 0, Math.PI * 2)
+        ctx.fillStyle = i === 0 ? '#facc15' : '#fff'
+        ctx.fill()
+        ctx.strokeStyle = '#0f172a'
+        ctx.stroke()
+      })
+
+      const first = points[0]
+      ctx.font = `800 ${Math.max(14, canvas.width / 70)}px sans-serif`
+      ctx.lineWidth = 4
+      ctx.strokeStyle = '#0f172a'
+      ctx.fillStyle = '#fff'
+      ctx.strokeText(label, first.x * canvas.width + 8, first.y * canvas.height + 22)
+      ctx.fillText(label, first.x * canvas.width + 8, first.y * canvas.height + 22)
+    }
+
+    function renderSeatEditors() {
+      seatEditorList.innerHTML = ''
+      if (!layout.seats.length) {
+        seatEditorList.innerHTML = '<div class="hint">설정된 ROI가 없습니다.</div>'
+        return
+      }
+      layout.seats.forEach((seat, index) => {
+        const item = document.createElement('div')
+        item.className = 'seat-editor'
+        const input = document.createElement('input')
+        input.value = seat.seat_id
+        input.setAttribute('aria-label', `${index + 1}번 좌석 ID`)
+        input.addEventListener('change', () => {
+          seat.seat_id = input.value.trim()
+          seat.label = seat.seat_id
+          renderAllRoi()
+        })
+        const remove = document.createElement('button')
+        remove.className = 'danger'
+        remove.textContent = '삭제'
+        remove.addEventListener('click', () => removeSeat(index))
+        item.append(input, remove)
+        seatEditorList.append(item)
+      })
+    }
+
+    function renderOverlay() {
+      streamOverlay.innerHTML = ''
+      layout.seats.forEach((seat, index) => {
+        const status = statuses.find((item) => item.seat_id === seat.seat_id)?.status ?? 'unknown'
+        const colors = { empty: '#22c55e', occupied: '#ef4444', away: '#f59e0b', noshow: '#8b5cf6', unknown: '#38bdf8' }
+        const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
+        polygon.setAttribute('points', seat.polygon.map((point) => `${point.x * 1000},${point.y * 1000}`).join(' '))
+        polygon.setAttribute('fill', `${colors[status]}33`)
+        polygon.setAttribute('stroke', colors[status])
+        polygon.setAttribute('stroke-width', '5')
+        polygon.setAttribute('vector-effect', 'non-scaling-stroke')
+        streamOverlay.append(polygon)
+
+        const first = seat.polygon[0]
+        if (!first) return
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+        text.setAttribute('x', String(first.x * 1000 + 8))
+        text.setAttribute('y', String(first.y * 1000 + 30))
+        text.setAttribute('fill', '#fff')
+        text.setAttribute('stroke', '#0f172a')
+        text.setAttribute('stroke-width', '6')
+        text.setAttribute('paint-order', 'stroke')
+        text.setAttribute('font-size', '28')
+        text.setAttribute('font-weight', '800')
+        text.textContent = `${seat.label} · ${status}`
+        streamOverlay.append(text)
+      })
+    }
+
+    function renderAllRoi() {
+      renderCanvas()
+      renderSeatEditors()
+      renderOverlay()
+    }
+
+    function validateLayout() {
+      const ids = layout.seats.map((seat) => seat.seat_id.trim())
+      if (!ids.length) throw new Error('좌석 ROI를 한 개 이상 설정해 주세요.')
+      if (ids.some((id) => !id)) throw new Error('비어 있는 좌석 ID가 있습니다.')
+      if (new Set(ids).size !== ids.length) throw new Error('중복된 좌석 ID가 있습니다.')
+      layout.seats.forEach((seat) => {
+        seat.seat_id = seat.seat_id.trim()
+        seat.label = seat.seat_id
+      })
+    }
+
+    function activeLayoutPath() {
+      return demoMode ? '/api/demo/layout' : '/api/layout'
+    }
+
+    async function loadActiveLayout(writeLog = true) {
+      try {
+        const loaded = await request(activeLayoutPath())
+        layout = loaded
+        draftPoints = []
+        renderAllRoi()
+        updateControls()
+        if (writeLog) log(`${demoMode ? '시연 영상' : '카메라'} ROI ${layout.seats.length}개 불러옴`)
+      } catch (error) { showError(error) }
+    }
+
+    async function saveActiveLayout() {
+      clearError()
+      try {
+        validateLayout()
+        layout = await request(activeLayoutPath(), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(layout),
+        })
+        renderAllRoi()
+        updateControls()
+        log(`${demoMode ? '시연 영상' : '카메라'} ROI ${layout.seats.length}개 저장 완료`)
+      } catch (error) { showError(error) }
+    }
+
+    async function askGemini() {
+      if (!previewBlob) return
+      clearError()
+      const button = $('#aiButton')
+      button.disabled = true
+      button.textContent = '분석 중...'
+      try {
+        const form = new FormData()
+        form.append('image', previewBlob, demoMode ? 'demo-preview.jpg' : 'camera-preview.jpg')
+        const instructions = $('#aiInstructions').value.trim()
+        if (instructions) form.append('additional_instructions', instructions)
+        const suggestion = await request('/api/layout/suggestions', { method: 'POST', body: form })
+        layout = suggestion.layout
+        draftPoints = []
+        renderAllRoi()
+        updateControls()
+        log(`Gemini 후보 ${layout.seats.length}개 생성 · 저장 전 상태`)
+      } catch (error) { showError(error) }
+      finally {
+        button.textContent = 'Gemini 후보'
+        button.disabled = !previewBlob
+      }
+    }
+
+    function connectSeatEvents() {
+      disconnectSeatEvents()
+      eventSource = new EventSource(url('/api/seats/stream'))
+      badge(sseBadge, 'SSE 연결 중', 'warn')
+      eventSource.onopen = () => {
+        badge(sseBadge, 'SSE 연결됨', 'good')
+        log('좌석 상태 SSE 연결')
+      }
+      eventSource.onmessage = (event) => {
+        try {
+          statuses = JSON.parse(event.data)
+          renderSeats()
+          renderOverlay()
+        } catch (error) { showError(error) }
+      }
+      eventSource.onerror = () => badge(sseBadge, 'SSE 재연결 중', 'warn')
+    }
+
+    function disconnectSeatEvents() {
+      if (eventSource) eventSource.close()
+      eventSource = null
+      badge(sseBadge, 'SSE 미연결')
+    }
+
+    function renderSeats() {
+      seatGrid.innerHTML = ''
+      seatEmpty.hidden = statuses.length > 0
+      statuses.forEach((seat) => {
+        const card = document.createElement('div')
+        card.className = `seat-card ${seat.status}`
+        const classes = [...new Set((seat.detections ?? []).map((item) => item.class_name))]
+        const updated = seat.updated_at ? new Date(seat.updated_at).toLocaleTimeString('ko-KR') : '-'
+        card.innerHTML = `
+          <strong>${escapeHtml(seat.seat_id)}</strong>
+          <div class="seat-state">${escapeHtml(seat.status)}</div>
+          <div class="seat-detail">탐지: ${escapeHtml(classes.join(', ') || '없음')}<br>상태 변경: ${updated}</div>
+        `
+        seatGrid.append(card)
+      })
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char])
+    }
+
+    function connectStream() {
+      if (!demoMode) return
+      stopCameraStream()
+      streamConnected = true
+      demoStream.src = `${url('/api/demo/stream')}?t=${Date.now()}`
+      demoStream.onload = () => log('MJPEG 영상 스트림 수신 시작')
+      demoStream.onerror = () => {
+        if (demoMode) log('영상 스트림 연결 대기 또는 종료')
+      }
+    }
+
+    function startCameraStream() {
+      stopCameraStream()
+      cameraStreaming = true
+
+      const refresh = () => {
+        if (!cameraStreaming || demoMode) return
+        demoStream.onload = () => {
+          if (cameraStreaming && !demoMode) cameraStreamTimer = setTimeout(refresh, 180)
+        }
+        demoStream.onerror = () => {
+          if (cameraStreaming && !demoMode) cameraStreamTimer = setTimeout(refresh, 800)
+        }
+        demoStream.src = `${url('/api/camera/frame.jpg')}?t=${Date.now()}`
+      }
+
+      refresh()
+    }
+
+    function stopCameraStream() {
+      cameraStreaming = false
+      clearTimeout(cameraStreamTimer)
+      cameraStreamTimer = null
+      demoStream.onload = null
+      demoStream.onerror = null
+    }
+
+    function setSourceLabels() {
+      $('#cameraPreviewButton').hidden = demoMode
+      $('#videoUploadRow').hidden = !demoMode
+      $('#startButton').hidden = !demoMode
+      $('#stopButton').hidden = !demoMode
+      $('#sourceHeading').innerHTML = `<span class="step-number">1</span>${demoMode ? '시연 영상 업로드' : '실시간 카메라 준비'}`
+      $('#roiHeading').innerHTML = `<span class="step-number">2</span>${demoMode ? '첫 프레임에서 ROI 설정' : '카메라 캡처 프레임에서 ROI 설정'}`
+      $('#liveHeading').innerHTML = `<span class="step-number">3</span>${demoMode ? '영상 재생과 좌석 상태 확인' : '실시간 카메라와 좌석 상태 확인'}`
+      $('#loadLayoutButton').textContent = `${demoMode ? '시연 영상' : '카메라'} ROI 불러오기`
+      $('#saveLayoutButton').textContent = `${demoMode ? '시연용' : '카메라'} ROI 저장`
+      videoMeta.textContent = demoMode
+        ? '영상을 선택한 뒤 업로드해 주세요.'
+        : '위의 “실시간 카메라 테스트”를 누르면 현재 프레임과 저장된 카메라 ROI를 불러옵니다.'
+    }
+
+    async function startDemo() {
+      if (!videoInfo) return
+      clearError()
+      try {
+        if (!streamConnected) connectStream()
+        connectSeatEvents()
+        const result = await request('/api/demo/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ video_id: videoInfo.video_id }),
+        })
+        badge(videoBadge, `재생 중 · ${videoInfo.filename}`, 'warn')
+        updateDemoStatus(result)
+        updateControls()
+        log('영상 재생 및 실제 YOLO 분석 시작')
+      } catch (error) { showError(error) }
+    }
+
+    async function stopDemo() {
+      clearError()
+      try {
+        const result = await request('/api/demo/stop', { method: 'POST' })
+        updateDemoStatus(result)
+        updateControls()
+        log('영상 재생 및 분석 중지')
+      } catch (error) { showError(error) }
+    }
+
+    async function resetTimers() {
+      try {
+        statuses = await request('/api/seats/reset', { method: 'POST' })
+        renderSeats()
+        renderOverlay()
+        log('전체 좌석 타이머 초기화')
+      } catch (error) { showError(error) }
+    }
+
+    function startStatusPolling() {
+      if (statusTimer) return
+      pollStatus()
+      statusTimer = setInterval(pollStatus, 500)
+    }
+
+    function stopStatusPolling() {
+      clearInterval(statusTimer)
+      statusTimer = null
+    }
+
+    async function pollStatus() {
+      if (!demoMode) return
+      try {
+        const result = await request('/api/demo/status')
+        updateDemoStatus(result)
+      } catch { /* 상단 서버 확인과 사용자 동작에서 오류 표시 */ }
+    }
+
+    function updateDemoStatus(status) {
+      const playing = status.status === 'playing'
+      badge(modeBadge, `시연 모드 · ${status.status}`, playing ? 'warn' : 'good')
+      if (status.video_id && !videoInfo) {
+        videoInfo = {
+          video_id: status.video_id,
+          filename: status.filename,
+          duration_seconds: status.duration_seconds,
+          total_frames: status.total_frames,
+          fps: 0,
+        }
+      }
+      videoProgress.value = status.progress ?? 0
+      progressText.textContent = `${status.status} · ${formatTime(status.current_seconds)} / ${formatTime(status.duration_seconds)} · ${(status.progress ?? 0).toFixed(1)}% · ${status.current_frame}/${status.total_frames} 프레임`
+      if (status.status === 'completed') badge(videoBadge, `재생 완료 · ${status.filename}`, 'good')
+      else if (status.status === 'stopped') badge(videoBadge, `중지됨 · ${status.filename}`, 'warn')
+      else if (status.status === 'error') {
+        badge(videoBadge, '분석 오류', 'bad')
+        if (status.error) errorOutput.textContent = status.error
+      }
+      updateControls(status.status)
+    }
+
+    function updateControls(status = '') {
+      uploadButton.disabled = !demoMode || !videoInput.files?.length
+      $('#aiButton').disabled = !previewBlob
+      $('#finishPolygonButton').disabled = draftPoints.length < 3
+      $('#undoPointButton').disabled = draftPoints.length === 0
+      $('#cancelPolygonButton').disabled = draftPoints.length === 0
+      $('#saveLayoutButton').disabled = layout.seats.length === 0 || !previewImage
+      $('#startButton').disabled = !demoMode || !videoInfo || layout.seats.length === 0 || status === 'playing'
+      $('#stopButton').disabled = !demoMode || status !== 'playing'
+    }
+
+    $('#healthButton').addEventListener('click', checkHealth)
+    $('#cameraButton').addEventListener('click', startCameraTest)
+    $('#cameraPreviewButton').addEventListener('click', () => loadCameraPreview().catch(showError))
+    $('#enterButton').addEventListener('click', enterDemo)
+    $('#exitButton').addEventListener('click', exitDemo)
+    videoInput.addEventListener('change', updateControls)
+    uploadButton.addEventListener('click', uploadVideo)
+    canvas.addEventListener('click', addPoint)
+    $('#finishPolygonButton').addEventListener('click', finishPolygon)
+    $('#undoPointButton').addEventListener('click', () => { draftPoints.pop(); renderCanvas(); updateControls() })
+    $('#cancelPolygonButton').addEventListener('click', () => { draftPoints = []; renderCanvas(); updateControls() })
+    $('#clearRoiButton').addEventListener('click', () => {
+      if (!confirm('현재 편집 중인 ROI를 모두 삭제할까요? 저장 버튼을 누르기 전까지 서버 파일은 바뀌지 않습니다.')) return
+      layout.seats = []
+      draftPoints = []
+      renderAllRoi()
+      updateControls()
+    })
+    $('#loadLayoutButton').addEventListener('click', () => loadActiveLayout(true))
+    $('#saveLayoutButton').addEventListener('click', saveActiveLayout)
+    $('#aiButton').addEventListener('click', askGemini)
+    $('#startButton').addEventListener('click', startDemo)
+    $('#stopButton').addEventListener('click', stopDemo)
+    $('#resetTimersButton').addEventListener('click', resetTimers)
+    apiBase.addEventListener('change', checkHealth)
+
+    window.addEventListener('beforeunload', () => {
+      disconnectSeatEvents()
+      stopCameraStream()
+      if (demoMode) navigator.sendBeacon(url('/api/demo/exit'))
+    })
+
+    renderAllRoi()
+    renderSeats()
+    setSourceLabels()
+    updateControls()
+    checkHealth()
+  </script>
+</body>
+</html>
