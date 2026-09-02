@@ -12,3 +12,6 @@ test-results
 !.vscode/extensions.json
 !.vscode/settings.json
 tmp/
+coverage/
+*.tsbuildinfo
+pnpm-debug.log*

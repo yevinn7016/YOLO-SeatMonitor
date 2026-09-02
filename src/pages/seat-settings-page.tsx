@@ -1,7 +1,7 @@
 //카메라 화면에서 좌석 ROI 영역을 설정하고 서버에 저장하는 화면 코드
 import { ArrowLeft, Camera, Check, MonitorUp, MousePointer2, Pencil, Plus, RefreshCw, Save, Trash2, TriangleAlert } from 'lucide-react'
 import { useEffect, useState, type KeyboardEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { CameraFrameView, loadImageDimensions } from '@/components/camera-frame-view'
 import { Button } from '@/components/ui/button'
 import { SeatRoiEditor, type RoiRegion } from '@/components/seat-roi-editor'
@@ -27,7 +27,6 @@ function getLayoutSuggestionErrorMessage(error: unknown) {
 }
 
 export function SeatSettingsPage() {
-  const navigate = useNavigate()
   const health = useHealthQuery()
   const layout = useLayoutQuery()
   const saveLayout = useSaveLayoutMutation()
@@ -161,7 +160,7 @@ export function SeatSettingsPage() {
   return (
     <div className="mx-auto max-w-7xl">
       <Link to="/" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900">
-        <ArrowLeft size={16} />대시보드로 돌아가기
+        <ArrowLeft size={16} />처음으로 돌아가기
       </Link>
 
       <header className="mt-5">
@@ -252,7 +251,7 @@ export function SeatSettingsPage() {
           {captureError && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-xs text-rose-700">{captureError}</p>}
           {createSuggestion.isError && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-xs text-rose-700">{getLayoutSuggestionErrorMessage(createSuggestion.error)}</p>}
           {saveLayout.isError && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-xs text-rose-700">좌석 배치 저장에 실패했습니다. 서버 연결을 확인해주세요.</p>}
-          {saveLayout.isSuccess && <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-xs text-emerald-700">좌석 배치가 저장되었습니다.</p>}
+          {saveLayout.isSuccess && <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-xs font-medium text-emerald-700">좌석 설정이 저장되었습니다.</p>}
           {layout.isError && currentStep === 1 && <p role="alert" className="mt-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-700">기존 좌석 배치를 불러오지 못했습니다. 새 배치로 계속 편집할 수 있습니다.</p>}
 
           <div className="mt-7 rounded-xl bg-slate-50 p-4 text-xs leading-5 text-slate-500">
@@ -270,7 +269,6 @@ export function SeatSettingsPage() {
           ) : (
             <div className="mt-5 grid gap-2">
               <Button disabled={regions.length === 0 || saveLayout.isPending} onClick={saveRegions}><Save size={15} className="mr-2" />{saveLayout.isPending ? '저장 중...' : `좌석 ${regions.length}개 저장`}</Button>
-              {saveLayout.isSuccess && <Button onClick={() => navigate('/')}>대시보드로 돌아가기</Button>}
               <Button variant="outline" disabled={!capturedImageBlob || !suggestionAvailable || createSuggestion.isPending} onClick={() => requestLayoutSuggestion()}>{createSuggestion.isPending ? 'AI 분석 중...' : 'AI 자동 좌석 설정'}</Button>
               <Button variant="outline" disabled={!selectedRegionId} onClick={() => { setRegions((current) => current.filter((region) => region.id !== selectedRegionId)); setSelectedRegionId(null) }}><Trash2 size={15} className="mr-2" />선택 영역 삭제</Button>
               <Button variant="ghost" onClick={() => setCurrentStep(1)}>이전: 캡처 확인</Button>

@@ -18,3 +18,10 @@ button { cursor: pointer; }
 @layer utilities {
   .surface { @apply rounded-2xl border border-slate-200/80 bg-white shadow-[0_10px_35px_rgba(15,23,42,0.04)]; }
 }
+
+/* 관리자 카메라 테스트는 사이드바를 제외한 폭에서도 영상과 상태를 나란히 유지한다. */
+@media (min-width: 768px) {
+  .camera-seat-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(340px, 1fr);
+  }
+}

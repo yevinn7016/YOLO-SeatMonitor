@@ -10,13 +10,13 @@ import { demoApi, type DemoPlaybackStatus, type UploadedDemoVideo } from '@/serv
 import { seatApi } from '@/services/seat-api'
 import { layoutToRegions } from '@/lib/layout-mapper'
 import { findNextSeatNumber, formatSeatLabel, parseSeatLabel, type SeatLabelParts } from '@/lib/seat-label'
-import type { ApiSeatStatus } from '@/types/seat'
+import type { ApiSeatStatus, SeatState } from '@/types/seat'
 
-const statusMeta: Record<ApiSeatStatus, { label: string; dot: string; seat: string }> = {
-  empty: { label: '빈 좌석', dot: 'bg-emerald-500', seat: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  occupied: { label: '점유 중', dot: 'bg-brand-500', seat: 'border-blue-200 bg-blue-50 text-blue-700' },
-  away: { label: '자리 비움', dot: 'bg-amber-500', seat: 'border-amber-200 bg-amber-50 text-amber-700' },
-  noshow: { label: '노쇼', dot: 'bg-rose-500', seat: 'border-rose-200 bg-rose-50 text-rose-700' },
+const statusMeta: Record<ApiSeatStatus, { label: string; dot: string; background: string; border: string; overlayFill: string; badgeBackground: string; badgeText: string }> = {
+  empty: { label: '사용 가능', dot: 'bg-emerald-500', background: '#d1fae5', border: '#10b981', overlayFill: 'rgba(16,185,129,.20)', badgeBackground: '#a7f3d0', badgeText: '#065f46' },
+  occupied: { label: '사용 중', dot: 'bg-red-500', background: '#fee2e2', border: '#ef4444', overlayFill: 'rgba(239,68,68,.20)', badgeBackground: '#fecaca', badgeText: '#991b1b' },
+  away: { label: '자리 비움', dot: 'bg-amber-500', background: '#fef3c7', border: '#f59e0b', overlayFill: 'rgba(245,158,11,.20)', badgeBackground: '#fde68a', badgeText: '#92400e' },
+  noshow: { label: '노쇼', dot: 'bg-purple-500', background: '#f3e8ff', border: '#a855f7', overlayFill: 'rgba(168,85,247,.20)', badgeBackground: '#e9d5ff', badgeText: '#6b21a8' },
 }
 
 const playbackLabels: Record<DemoPlaybackStatus, string> = {
@@ -29,6 +29,15 @@ const supportedVideoExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v']
 function formatTime(seconds = 0) {
   const safeSeconds = Math.max(0, Math.floor(seconds))
   return `${String(Math.floor(safeSeconds / 60)).padStart(2, '0')}:${String(safeSeconds % 60).padStart(2, '0')}`
+}
+
+function detectionNames(seat: SeatState) {
+  return [...new Set(seat.detections.map((detection) => detection.class_name).filter(Boolean))]
+}
+
+function formatUpdatedAt(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '시간 정보 없음' : date.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit', second: '2-digit' })
 }
 
 export function DemoPage() {
@@ -112,7 +121,8 @@ export function DemoPage() {
     return () => window.cancelAnimationFrame(frameId)
   }, [selectedRegionId, selectedRegionLabel])
 
-  const seats = seatsQuery.data ?? []
+  const seats = useMemo(() => seatsQuery.data ?? [], [seatsQuery.data])
+  const seatsById = useMemo(() => new Map(seats.map((seat) => [seat.seat_id, seat])), [seats])
   const tableGroups = useMemo(() => {
     const grouped = new Map<string, typeof seats>()
     seats.forEach((seat, index) => {
@@ -191,7 +201,7 @@ export function DemoPage() {
 
   const exitDemo = async () => {
     setIsExiting(true); setError(null)
-    try { await demoApi.exitDemo(); navigate('/') }
+    try { await demoApi.exitDemo(); navigate('/admin/layout') }
     catch (cause) { setError(cause instanceof Error ? cause.message : '데모 종료에 실패했습니다.'); setIsExiting(false) }
   }
 
@@ -228,7 +238,14 @@ export function DemoPage() {
       <section className="surface overflow-hidden p-5 sm:p-6">
         <div className="mb-5 flex items-center gap-2"><Film size={18} className="text-brand-600" /><h2 className="font-bold text-slate-900">시연 영상</h2></div>
         {!uploadedVideo ? <div className="grid min-h-[430px] place-items-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center"><div><Upload className="mx-auto mb-4 text-slate-400" size={36} /><p className="font-medium text-slate-700">분석할 시연 영상을 선택하세요.</p><input className="mt-5 block max-w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:font-medium file:text-blue-700" type="file" accept="video/*" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} /><Button className="mt-4" disabled={!selectedFile || isUploading} onClick={uploadVideo}>{isUploading && <LoaderCircle size={15} className="mr-2 animate-spin" />}{isUploading ? '업로드 중...' : '영상 업로드'}</Button></div></div>
-        : <><div className="grid aspect-video place-items-center overflow-hidden rounded-2xl bg-slate-950"><img src={isPlaying ? streamUrl : previewUrl} onError={() => !isPlaying && setError('영상 Preview를 불러오지 못했습니다.')} alt={isPlaying ? '분석 중인 시연 영상' : '시연 영상 첫 프레임'} className="max-h-full w-full object-contain" /></div><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold text-slate-800">{uploadedVideo.filename}</p><p className="mt-1 text-xs text-slate-500">영상 길이 {formatTime(uploadedVideo.duration_seconds)} · {uploadedVideo.fps} FPS</p></div><div className="flex gap-2">{!isPlaying && <Button variant="outline" onClick={() => setShowRoiEditor(true)}><Pencil size={14} className="mr-2" />ROI 설정</Button>}{isPlaying ? <Button variant="outline" disabled={isStopping} onClick={stopDemo}><Square size={14} className="mr-2" />{isStopping ? '중지 중...' : '분석 중지'}</Button> : <Button disabled={isStarting || !hasRoi} title={!hasRoi ? '시연용 ROI를 먼저 설정해주세요.' : undefined} onClick={startDemo}><Play size={15} className="mr-2" />{isStarting ? '시작 중...' : playbackStatus === 'completed' ? '다시 분석' : '분석 시작'}</Button>}</div></div>
+        : <><div className="relative grid aspect-video place-items-center overflow-hidden rounded-2xl bg-slate-950"><img src={isPlaying ? streamUrl : previewUrl} onError={() => !isPlaying && setError('영상 Preview를 불러오지 못했습니다.')} alt={isPlaying ? '분석 중인 시연 영상' : '시연 영상 첫 프레임'} className="size-full object-contain" />{regions.map((region) => {
+          const seat = seatsById.get(region.label)
+          const meta = seat ? statusMeta[seat.status] : null
+          const stroke = meta?.border ?? '#64748b'
+          const fill = meta?.overlayFill ?? 'rgba(100,116,139,.18)'
+          const firstPoint = region.points[0]
+          return <svg key={region.id} className="pointer-events-none absolute inset-0 size-full" viewBox="0 0 1000 1000" preserveAspectRatio="none"><polygon points={region.points.map((point) => `${point.x * 1000},${point.y * 1000}`).join(' ')} fill={fill} stroke={stroke} strokeWidth="4" vectorEffect="non-scaling-stroke" /><text x={firstPoint.x * 1000 + 5} y={Math.max(16, firstPoint.y * 1000 - 5)} fill={stroke} stroke="rgba(2,6,23,.85)" strokeWidth="2.5" paintOrder="stroke" fontSize="13" fontWeight="700">{region.label}</text></svg>
+        })}</div><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold text-slate-800">{uploadedVideo.filename}</p><p className="mt-1 text-xs text-slate-500">영상 길이 {formatTime(uploadedVideo.duration_seconds)} · {uploadedVideo.fps} FPS</p></div><div className="flex gap-2">{!isPlaying && <Button variant="outline" onClick={() => setShowRoiEditor(true)}><Pencil size={14} className="mr-2" />ROI 설정</Button>}{isPlaying ? <Button variant="outline" disabled={isStopping} onClick={stopDemo}><Square size={14} className="mr-2" />{isStopping ? '중지 중...' : '분석 중지'}</Button> : <Button disabled={isStarting || !hasRoi} title={!hasRoi ? '시연용 ROI를 먼저 설정해주세요.' : undefined} onClick={startDemo}><Play size={15} className="mr-2" />{isStarting ? '시작 중...' : playbackStatus === 'completed' ? '다시 분석' : '분석 시작'}</Button>}</div></div>
         <div className={`mt-4 rounded-xl p-3 text-xs ${hasRoi ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{hasRoi ? `✓ ROI 설정 완료 · ${regions.length}석` : '⚠ 시연용 ROI 설정이 필요합니다. 첫 프레임을 기준으로 좌석 영역을 설정해주세요.'}</div>
         <div className="mt-5 rounded-xl bg-slate-50 p-4"><div className="flex justify-between text-xs font-medium text-slate-600"><span>{playbackLabels[playbackStatus]}</span><span>{formatTime(statusQuery.data?.current_seconds)} / {formatTime(statusQuery.data?.duration_seconds ?? uploadedVideo.duration_seconds)} · {progress.toFixed(0)}%</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-brand-500 transition-[width] duration-500" style={{ width: `${progress}%` }} /></div></div></>}
       </section>
@@ -239,7 +256,11 @@ export function DemoPage() {
         {isDemoReady && seatsQuery.isError && <p className="mt-5 text-sm text-rose-600">좌석 정보를 불러오지 못했습니다.</p>}
         {!isDemoReady && <div className="grid min-h-48 place-items-center text-sm text-slate-400">데모 좌석 정보를 준비하고 있습니다...</div>}
         {isDemoReady && !seatsQuery.isLoading && !seatsQuery.isError && tableGroups.length === 0 && <div className="grid min-h-48 place-items-center text-sm text-slate-400">등록된 좌석이 없습니다.</div>}
-        {isDemoReady && <div className="mt-5 grid gap-4 sm:grid-cols-2">{tableGroups.map(([tableId, seats]) => <div key={tableId} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><div className="mb-3 flex justify-between border-b border-slate-200 pb-3"><span className="text-sm font-bold text-slate-800">테이블 {tableId}</span><span className="text-xs text-slate-500">{seats?.length ?? 0}석</span></div><div className="grid grid-cols-2 gap-2">{seats?.map((seat) => <button key={seat.seat_id} title="클릭하여 좌석 타이머 초기화" disabled={resetSeatTimer.isPending && resetSeatTimer.variables === seat.seat_id} onClick={() => resetSeatTimer.mutate(seat.seat_id)} className={`rounded-xl border px-2.5 py-2.5 text-left shadow-sm transition hover:-translate-y-0.5 disabled:opacity-60 ${statusMeta[seat.status].seat}`}><span className="block truncate text-[11px] font-bold">{seat.seat_id}</span><span className="mt-1 block text-[10px] font-medium opacity-80">{statusMeta[seat.status].label}</span></button>)}</div></div>)}</div>}
+        {isDemoReady && <div className="mt-5 grid gap-4 sm:grid-cols-2">{tableGroups.map(([tableId, tableSeats]) => <div key={tableId} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><div className="mb-3 flex justify-between border-b border-slate-200 pb-3"><span className="text-sm font-bold text-slate-800">테이블 {tableId}</span><span className="text-xs text-slate-500">{tableSeats.length}석</span></div><div className="grid grid-cols-1 gap-2 2xl:grid-cols-2">{tableSeats.map((seat) => {
+          const meta = statusMeta[seat.status]
+          const names = detectionNames(seat)
+          return <button key={seat.seat_id} title="클릭하여 좌석 타이머 초기화" disabled={resetSeatTimer.isPending && resetSeatTimer.variables === seat.seat_id} onClick={() => resetSeatTimer.mutate(seat.seat_id)} className="rounded-xl border px-3 py-3 text-left shadow-sm transition hover:-translate-y-0.5 disabled:opacity-60" style={{ backgroundColor: meta.background, borderColor: meta.border, borderLeftColor: meta.border, borderLeftWidth: 4 }}><span className="flex items-center justify-between gap-2"><strong className="truncate text-[11px] text-slate-900">{seat.seat_id}</strong><span className="shrink-0 rounded-full px-2 py-1 text-[9px] font-semibold" style={{ backgroundColor: meta.badgeBackground, color: meta.badgeText }}>{meta.label}</span></span><span className="mt-2 block truncate text-[10px] text-slate-500"><b className="font-medium text-slate-600">탐지:</b> {names.length ? names.join(', ') : '없음'}</span><span className="mt-1 block text-[10px] text-slate-500"><b className="font-medium text-slate-600">상태 변경:</b> {formatUpdatedAt(seat.updated_at)}</span></button>
+        })}</div></div>)}</div>}
       </section>
     </div>
     {showRoiEditor && uploadedVideo && (
