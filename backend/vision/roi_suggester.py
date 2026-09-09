@@ -165,7 +165,7 @@ def _polygon_area(points: list[Point]) -> float:
 
     for index, point in enumerate(points):
         next_point = points[(index + 1) % len(points)]
-        area += point.x * next_point.y - next_point.x * point.y
+        area += point.x * next_point.y - next_point.x * point.y # 신발끈 공식 사용
 
     return abs(area) / 2.0
 
@@ -176,11 +176,15 @@ def _polygon_center(candidate: _GeminiSeatCandidate) -> tuple[float, float]:
     return x, y
 
 
-def _candidate_to_points(candidate: _GeminiSeatCandidate) -> list[Point]:
-    return [
-        Point(x=point.x / 1000.0, y=point.y / 1000.0)
-        for point in candidate.polygon
-    ]
+def _candidate_to_points(candidate: _GeminiSeatCandidate) -> list[Point]: # 0~1000 좌표를 0~1 좌표로 변환하는 정규화 함수
+    points = []
+    for gemini_point in candidate.polygon:
+        point = Point(
+            x=gemini_point.x / 1000.0,
+            y=gemini_point.y / 1000.0,
+        )
+        points.append(point)
+    return points
 
 
 def _row_label(index: int) -> str:
@@ -189,8 +193,10 @@ def _row_label(index: int) -> str:
     label = ""
 
     while index > 0:
+        # 행 번호는 1부터, 문자 오프셋은 0부터 시작하므로 1을 뺀다.
         index, remainder = divmod(index - 1, 26)
-        label = chr(ord("A") + remainder) + label
+        letter = chr(ord("A") + remainder)
+        label = letter + label  # 낮은 자리부터 계산하므로 새 글자를 앞에 붙인다.
 
     return label
 
@@ -201,6 +207,8 @@ def build_layout_suggestion(
     image_width: int,
     image_height: int,
 ) -> LayoutSuggestion:
+    """Gemini 후보를 검사하고 화면 위치순으로 번호를 붙인다. 파일 저장은 하지 않는다."""
+    # 1. 너무 작은 후보를 제외하고 같은 테이블의 좌석끼리 묶는다.
     grouped_candidates: dict[int, list[_GeminiSeatCandidate]] = defaultdict(list)
     warnings = list(payload.warnings)
 
@@ -217,8 +225,10 @@ def build_layout_suggestion(
         centers = [_polygon_center(candidate) for candidate in group]
         center_x = sum(center[0] for center in centers) / len(centers)
         center_y = sum(center[1] for center in centers) / len(centers)
+        # y를 먼저 비교하고, y가 정확히 같으면 x를 비교하는 정렬 키이다.
         return center_y, center_x
 
+    # 2. Gemini의 그룹 번호는 묶는 용도로만 쓰고, 화면 위치로 순서를 다시 정한다.
     ordered_groups = sorted(grouped_candidates.values(), key=group_center)
     seats: list[SeatRoi] = []
 
@@ -232,21 +242,18 @@ def build_layout_suggestion(
 
         for row_index, row in enumerate(ordered_rows, start=1):
             row_label = _row_label(row_index)
-            ordered_seats = sorted(
-                row,
-                key=lambda candidate: (
-                    _polygon_center(candidate)[0],
-                    _polygon_center(candidate)[1],
-                ),
-            )
+            # 같은 행 안에서는 (x, y) 순으로 비교하므로 왼쪽 좌석이 먼저 온다.
+            ordered_seats = sorted(row, key=_polygon_center)
 
+            # 3. 테이블-행-좌석 번호를 만들고 프로젝트의 SeatRoi로 변환한다.
             for seat_index, candidate in enumerate(ordered_seats, start=1):
                 seat_id = f"T{table_index:02d}-{row_label}-{seat_index:02d}"
-                seats.append(SeatRoi(
+                seat = SeatRoi(
                     seat_id=seat_id,
                     label=seat_id,
                     polygon=_candidate_to_points(candidate),
-                ))
+                )
+                seats.append(seat)
 
     if not seats:
         logger.warning("Gemini ROI 응답에 유효한 좌석 후보가 없습니다.")
@@ -285,26 +292,28 @@ def suggest_layout_with_gemini(
     try:
         from google import genai
 
+        # 이미지 파일 bytes를 JSON 요청에 넣을 수 있는 문자열로 바꾼다.
+        image_text = base64.b64encode(image_bytes).decode("ascii")
+        request_input = [
+            {"type": "text", "text": prompt},
+            {"type": "image", "data": image_text, "mime_type": mime_type},
+        ]
+        response_format = {
+            "type": "text",
+            "mime_type": "application/json",
+            "schema": GEMINI_ROI_RESPONSE_SCHEMA,
+        }
+
         client = genai.Client(api_key=api_key)
         interaction = client.interactions.create(
             model=model,
-            input=[
-                {"type": "text", "text": prompt},
-                {
-                    "type": "image",
-                    "data": base64.b64encode(image_bytes).decode("ascii"),
-                    "mime_type": mime_type,
-                },
-            ],
-            response_format={
-                "type": "text",
-                "mime_type": "application/json",
-                "schema": GEMINI_ROI_RESPONSE_SCHEMA,
-            },
+            input=request_input,
+            response_format=response_format,
             generation_config={"thinking_level": "medium"},
             timeout=GEMINI_REQUEST_TIMEOUT_SECONDS,
         )
-        payload = _GeminiRoiResponse.model_validate_json(interaction.output_text)
+        response_json = interaction.output_text
+        payload = _GeminiRoiResponse.model_validate_json(response_json)
     except ImportError as error:
         raise RoiSuggestionConfigurationError(
             "google-genai 패키지가 설치되지 않았습니다."

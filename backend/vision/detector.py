@@ -53,7 +53,9 @@ def detect_frame(model, frame, confidence: float = YOLO_MIN_CONFIDENCE) -> list[
 # 감지 사각형의 중심 좌표를 계산한다.
 def get_box_center(box: list[float]) -> tuple[float, float]:
     x1, y1, x2, y2 = box
-    return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+    center_x = (x1 + x2) / 2.0
+    center_y = (y1 + y2) / 2.0
+    return center_x, center_y
 
 
 # 점이 좌석 ROI 다각형 내부에 있는지 레이캐스팅으로 확인한다.
@@ -63,19 +65,21 @@ def is_point_in_polygon(point: tuple[float, float], seat: SeatRoi) -> bool:
     x, y = point
     polygon = seat.polygon
     inside = False
-    previous = polygon[-1]
+    previous = polygon[-1]  # 마지막 점과 첫 번째 점 사이의 변부터 검사한다.
 
     for current in polygon:
-        crosses_y = (current.y > y) != (previous.y > y)
+        current_is_below = current.y > y
+        previous_is_below = previous.y > y
+        crosses_y = current_is_below != previous_is_below
         if crosses_y:
-            boundary_x = (
-                (previous.x - current.x)
-                * (y - current.y)
-                / (previous.y - current.y)
-                + current.x
-            )
+            # 수평선이 변과 만나는 x 좌표. 기존 계산 순서를 유지한다.
+            width_difference = previous.x - current.x
+            height_difference = previous.y - current.y
+            height_from_current = y - current.y
+            horizontal_offset = width_difference * height_from_current / height_difference
+            boundary_x = current.x + horizontal_offset
             if x < boundary_x:
-                inside = not inside
+                inside = not inside  # 오른쪽 경계 교차 횟수가 홀수이면 내부이다.
 
         previous = current
 
@@ -114,39 +118,37 @@ def assign_detections_to_seats(
 
 # 좌석에서 감지된 객체를 바탕으로 즉시 상태를 판단한다.
 def decide_instant_status(detections: list[dict]) -> str:
-    has_person = any(
-        detection["class_name"] in PERSON_CLASSES
-        and float(detection.get("confidence", 1.0)) >= PERSON_MIN_CONFIDENCE
-        for detection in detections
-    )
-    has_belongings = any(
-        detection["class_name"] in BELONGING_CLASSES
-        and float(detection.get("confidence", 1.0)) >= BELONGING_MIN_CONFIDENCE
-        for detection in detections
-    )
+    # 소지품이 먼저 발견되어도 사람이 있으면 점유가 우선이다.
+    for detection in detections:
+        if detection["class_name"] in PERSON_CLASSES:
+            confidence = float(detection.get("confidence", 1.0))
+            if confidence >= PERSON_MIN_CONFIDENCE:
+                return "occupied"
 
-    if has_person:
-        return "occupied"
-
-    if has_belongings:
-        return "belongings_only"
+    for detection in detections:
+        if detection["class_name"] in BELONGING_CLASSES:
+            confidence = float(detection.get("confidence", 1.0))
+            if confidence >= BELONGING_MIN_CONFIDENCE:
+                return "belongings_only"
 
     return "empty"
 
 
-# 좌석별 감지 결과를 좌석 상태 목록으로 변환한다.
+# 좌석별 순간 상태를 만든다. 시간 조건과 최종 상태는 SeatService가 결정한다.
 def build_seat_statuses(seat_results: list[dict]) -> list[SeatStatus]:
-    statuses = []
+    instant_statuses = []
 
     for seat_result in seat_results:
-        instant_status = decide_instant_status(seat_result["detections"])
-        statuses.append(SeatStatus(
+        detections = seat_result["detections"]
+        instant_status = decide_instant_status(detections)
+        seat_status = SeatStatus(
             seat_id=seat_result["seat_id"],
             status=instant_status,
-            detections=seat_result["detections"],
-        ))
+            detections=detections,
+        )
+        instant_statuses.append(seat_status)
 
-    return statuses
+    return instant_statuses
 
 
 # 프레임 감지부터 좌석별 상태 생성까지 전체 분석을 수행한다.

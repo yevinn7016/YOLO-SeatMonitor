@@ -35,7 +35,7 @@ class SeatService:
     # 현재 좌석 배치의 복사본을 반환한다.
     def get_layout(self) -> Layout:
         with self._lock:
-            return self._layout.model_copy(deep=True)
+            return self._layout.model_copy(deep=True) #원본 객체 변경 방지를 위해 copy, 내부 객체 원본 전달 방지를 위해 deep=true
 
     # 새 좌석 배치를 저장하고 좌석 상태 기록을 초기화한다.
     def replace_layout(self, layout: Layout) -> Layout:
@@ -58,7 +58,7 @@ class SeatService:
     # 현재 좌석 상태 목록의 복사본을 반환한다.
     def get_statuses(self) -> list[SeatStatus]:
         with self._lock:
-            return [status.model_copy(deep=True) for status in self._statuses]
+            return self._copy_statuses_locked()
 
     # 현재 운영 설정의 복사본을 반환한다.
     def get_settings(self) -> Settings:
@@ -76,35 +76,43 @@ class SeatService:
     # 최신 감지 결과를 상태 전환 규칙에 따라 좌석 상태로 갱신한다.
     def update_statuses(self, statuses: list[SeatStatus]) -> None:
         with self._lock:
-            previous_by_id = {status.seat_id: status for status in self._statuses}
+            previous_by_id = {}
+            for previous_status in self._statuses:
+                previous_by_id[previous_status.seat_id] = previous_status
+
+            # 같은 분석 회차의 모든 좌석에 동일한 시각을 적용한다.
             now = time.monotonic()
             wall_now = datetime.now(UTC)
-            next_statuses = [
-                self._transition_status(
-                    status,
-                    previous_by_id.get(status.seat_id),
+            next_statuses = []
+            status_changed = False
+
+            for instant_status in statuses:
+                previous_status = previous_by_id.get(instant_status.seat_id)
+                next_status = self._transition_status(
+                    instant_status,
+                    previous_status,
                     now,
                     wall_now,
                 )
-                for status in statuses
-            ]
-            status_changed = any(
-                previous_by_id.get(status.seat_id) is None
-                or previous_by_id[status.seat_id].status != status.status
-                for status in next_statuses
-            )
-            self._statuses = next_statuses
+                next_statuses.append(next_status)
 
+                if previous_status is None:
+                    status_changed = True
+                elif previous_status.status != next_status.status:
+                    status_changed = True
+            # 상태 문자열이 같아도 detections 같은 세부 정보는 바뀔 수 있어 항상 갱신한다.
+            self._statuses = next_statuses
             if status_changed:
                 self._notify_subscribers_locked()
 
     # 특정 좌석의 자리 비움/노쇼 판정 타이머를 초기화한다.
     def reset_seat_timer(self, seat_id: str) -> SeatStatus:
         with self._lock:
-            index = next(
-                (i for i, status in enumerate(self._statuses) if status.seat_id == seat_id),
-                None,
-            )
+            index = None
+            for current_index, seat_status in enumerate(self._statuses):
+                if seat_status.seat_id == seat_id:
+                    index = current_index
+                    break
             if index is None:
                 raise KeyError(seat_id)
 
@@ -122,20 +130,22 @@ class SeatService:
         with self._lock:
             now = time.monotonic()
             wall_now = datetime.now(UTC)
-            should_notify = any(
-                status.status in {"away", "noshow"}
-                for status in self._statuses
-            )
-            self._statuses = [
-                self._reset_timer_locked(status, now, wall_now)
-                for status in self._statuses
-            ]
+            should_notify = False
+            reset_statuses = []
+            for current_status in self._statuses:
+                if current_status.status in {"away", "noshow"}:
+                    should_notify = True
+
+                reset_status = self._reset_timer_locked(current_status, now, wall_now)
+                reset_statuses.append(reset_status)
+
+            self._statuses = reset_statuses
             if should_notify:
                 self._notify_subscribers_locked()
             return self._copy_statuses_locked()
 
     # SSE 연결 하나가 사용할 변경 알림 큐를 등록한다.
-    def subscribe(self) -> Queue[list[SeatStatus]]:
+    def subscribe(self) -> Queue[list[SeatStatus]]: # 큐에는 전체 좌석 목록 한 뭉탱이가 들어감
         subscriber: Queue[list[SeatStatus]] = Queue(maxsize=1)
         with self._lock:
             self._subscribers.add(subscriber)
@@ -148,15 +158,18 @@ class SeatService:
             self._subscribers.discard(subscriber)
 
     # 연결 직후 현재 상태를 한 번 보내고, 이후 실제 변경이 있을 때만 새 상태를 보낸다.
+    # TODO: timeout 뒤에 종료 여부를 확인하지 않고 재대기한다.
+    # 추후 비동기 SSE로 개선하여 연결 종료와 구독 해제를 연동한다.
     def status_events(self) -> Iterator[list[SeatStatus]]:
         subscriber = self.subscribe()
-        try:
+        try: # sse 연결 중 실행
             while True:
                 try:
-                    yield subscriber.get(timeout=1)
+                    statuses = subscriber.get(timeout=1)
+                    yield statuses
                 except Empty:
                     continue
-        finally:
+        finally: # 제너레이터가 종료될 때 구독 큐를 정리한다.
             self.unsubscribe(subscriber)
 
     # 감지 결과와 이전 상태를 비교해 한 좌석의 다음 상태를 결정한다.
@@ -168,7 +181,12 @@ class SeatService:
         wall_now: datetime,
     ) -> SeatStatus:
         seat_id = instant_status.seat_id
-        previous_value = previous_status.status if previous_status else "empty"
+        if previous_status is None:
+            previous_value = "empty"
+        else:
+            previous_value = previous_status.status
+
+        # now는 경과시간 계산용, wall_now는 응답에 기록할 실제 UTC 시각이다.
 
         if instant_status.status == "occupied":
             self._empty_detected_since.pop(seat_id, None)
@@ -223,11 +241,10 @@ class SeatService:
                     status = "empty"
 
         status_changed = previous_status is None or previous_value != status
-        updated_at = (
-            wall_now
-            if status_changed
-            else previous_status.updated_at
-        )
+        if status_changed:
+            updated_at = wall_now
+        else:
+            updated_at = previous_status.updated_at
 
         if status in {"away", "noshow"}:
             away_since_value = self._away_started_wall_at.get(seat_id)
@@ -258,7 +275,10 @@ class SeatService:
             self._away_started_at[seat_id] = now
             self._away_started_wall_at[seat_id] = wall_now
             next_status = "away"
-            updated_at = wall_now if current.status == "noshow" else current.updated_at
+            if current.status == "noshow":
+                updated_at = wall_now  # noshow에서 away로 실제 상태가 바뀐다.
+            else:
+                updated_at = current.updated_at  # away일 경우 상태값은 그대로이다.
             away_since = wall_now
         else:
             self._away_started_at.pop(seat_id, None)
@@ -280,7 +300,7 @@ class SeatService:
         return [status.model_copy(deep=True) for status in self._statuses]
 
     # 느린 클라이언트에는 오래된 알림을 버리고 가장 최신 상태만 남긴다.
-    def _notify_subscribers_locked(self) -> None:
+    def _notify_subscribers_locked(self) -> None: # Queue는 생산자와 소비자가 서로 다른 속도로 동작할 수 있게 분리한다.
         snapshot = self._copy_statuses_locked()
         for subscriber in self._subscribers:
             try:
@@ -291,6 +311,12 @@ class SeatService:
                 except Empty:
                     pass
                 subscriber.put_nowait(snapshot)
+                #Full 상태에서 get_nowait 실행 후 Empty에러가 날 수 있는 이유
+                #1. 최신 상태를 넣으려고 함
+                #2. Queue가 가득 차서 Full 발생
+                #3. 그 순간 프론트 전송 작업이 기존 상태를 꺼냄
+                #4. get_nowait()을 실행했더니 이미 Queue가 비어 있음
+                #5. Empty 발생
 
     # 배치에 있는 모든 좌석을 빈자리 상태로 초기화한다.
     @staticmethod

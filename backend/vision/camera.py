@@ -11,11 +11,17 @@ MAX_CONSECUTIVE_READ_FAILURES = 3
 
 
 def parse_camera_source(source: str) -> int | str:
-    return int(source) if source.isdigit() else source
+    if source.isdigit():
+        return int(source)
+    return source
 
 
 class CameraWorker:
-    """카메라 프레임을 계속 읽고 1초마다 현재 ROI를 분석한다."""
+    """수집 스레드는 최신 프레임을 저장하고, 분석 스레드는 복사본을 분석한다.
+
+    분석 사이에는 기본 1초를 기다린다. 실제 간격에는 추론 시간도 포함된다.
+    최종 좌석 상태와 타이머는 전달받은 SeatService가 관리한다.
+    """
 
     def __init__(
         self,
@@ -51,7 +57,9 @@ class CameraWorker:
     @property
     def error(self) -> str | None:
         with self._state_lock:
-            return self._camera_error or self._inference_error
+            if self._camera_error:
+                return self._camera_error
+            return self._inference_error
 
     def start(self) -> None:
         if self.running:
@@ -59,6 +67,7 @@ class CameraWorker:
 
         self.running = True
         self._stop_event.clear()
+        # target에는 실행 결과가 아니라 함수를 전달한다. 실행은 start()가 한다.
         self._capture_thread = Thread(
             target=self._run_capture,
             name="camera-capture",
@@ -80,6 +89,7 @@ class CameraWorker:
         self._release_current_capture()
 
         if self._capture_thread is not None:
+            # join은 종료를 기다릴 뿐, 시간 초과 시 스레드를 강제로 종료하지 않는다.
             self._capture_thread.join(timeout=3)
             self._capture_thread = None
 
@@ -96,10 +106,13 @@ class CameraWorker:
             return None
 
         success, encoded = cv2.imencode(".jpg", frame)
-        return encoded.tobytes() if success else None
+        if not success:
+            return None
+        return encoded.tobytes()
 
     # 카메라 프레임은 YOLO 추론과 별개로 계속 수집한다.
     def _run_capture(self) -> None:
+        # 바깥 반복은 연결·재연결, 안쪽 반복은 연결된 장치에서 프레임 읽기이다.
         while self.running:
             capture = cv2.VideoCapture(parse_camera_source(self.source))
             self._set_current_capture(capture)
@@ -149,9 +162,13 @@ class CameraWorker:
         self._release_current_capture()
         self._set_camera_state(connected=False, error=None)
 
-    # 1초마다 최신 프레임의 복사본만 가져와 분석한다.
+    # 지정한 시간만큼 대기한 뒤 최신 프레임의 복사본을 분석한다.
     def _run_inference(self) -> None:
-        while not self._stop_event.wait(self.inference_interval):
+        while True:
+            stop_requested = self._stop_event.wait(self.inference_interval)
+            if stop_requested:
+                return
+
             frame = self._get_latest_frame()
 
             if frame is None:
@@ -164,10 +181,11 @@ class CameraWorker:
 
             try:
                 with self._inference_lock:
-                    statuses = analyze_frame(self.model, frame, layout.seats)
+                    instant_statuses = analyze_frame(self.model, frame, layout.seats)
+                # 분석 중 종료 요청이 왔다면 이전 모드의 결과를 반영하지 않는다.
                 if self._stop_event.is_set():
                     return
-                self.seat_service.update_statuses(statuses)
+                self.seat_service.update_statuses(instant_statuses)
                 self._set_inference_error(None)
             except Exception as error:
                 self._set_inference_error(f"YOLO 분석 실패: {error}")

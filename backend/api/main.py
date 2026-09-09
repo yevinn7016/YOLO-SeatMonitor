@@ -65,6 +65,7 @@ source_mode_lock = Lock()
 async def lifespan(app: FastAPI):
     global camera_worker, demo_manager
 
+    # 서버 시작: 모델은 한 번만 읽고 두 영상 작업자가 공유한다.
     model = load_model(MODEL_PATH)
     inference_lock = Lock()
     camera_worker = CameraWorker(
@@ -76,8 +77,9 @@ async def lifespan(app: FastAPI):
     demo_manager = DemoVideoManager(model, seat_service, inference_lock)
     camera_worker.start()
 
-    yield
+    yield  # 이 지점에서 서버가 요청을 처리한다.
 
+    # 서버 종료: 영상 작업자와 카메라 자원을 정리한다.
     demo_manager.shutdown()
     camera_worker.stop()
 
@@ -98,14 +100,23 @@ app.add_middleware(
 @app.get("/api/health")
 def health():
     layout = seat_service.get_layout()
-    active_source = demo_manager.mode if demo_manager else "camera"
-    demo_status = demo_manager.status().status if demo_manager else "idle"
+    active_source = "camera"
+    demo_status = "idle"
+    if demo_manager is not None:
+        active_source = demo_manager.mode
+        demo_status = demo_manager.status().status
+
+    camera_connected = False
+    camera_error = None
+    if camera_worker is not None:
+        camera_connected = camera_worker.connected
+        camera_error = camera_worker.error
 
     return {
         "status": "ok",
         "active_source": active_source,
-        "camera_connected": camera_worker.connected if camera_worker else False,
-        "camera_error": camera_worker.error if camera_worker else None,
+        "camera_connected": camera_connected,
+        "camera_error": camera_error,
         "demo_status": demo_status,
         "roi_configured": len(layout.seats) > 0,
         "seat_count": len(layout.seats),
@@ -156,15 +167,18 @@ async def create_layout_suggestion(
     if len(image_bytes) > MAX_ROI_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="이미지 크기는 10MB 이하여야 합니다.")
 
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
     try:
-        return await run_in_threadpool(
+        # Gemini 응답 대기는 별도 스레드에서 수행하여 다른 API 요청을 막지 않는다.
+        suggestion = await run_in_threadpool(
             suggest_layout_with_gemini,
             image_bytes,
             mime_type,
-            os.getenv("GEMINI_API_KEY", "").strip(),
+            api_key,
             GEMINI_ROI_MODEL,
             additional_instructions,
         )
+        return suggestion
     except InvalidRoiImageError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except RoiSuggestionConfigurationError as error:
@@ -200,7 +214,11 @@ def reset_seat_timer(seat_id: str):
 @app.get("/api/seats/stream", response_class=EventSourceResponse)
 def stream_seats():
     for statuses in seat_service.status_events():
-        yield [status.model_dump(mode="json") for status in statuses]
+        response_data = []
+        for seat_status in statuses:
+            seat_data = seat_status.model_dump(mode="json")
+            response_data.append(seat_data)
+        yield response_data
 
 
 @app.get("/api/settings", response_model=Settings)
@@ -258,7 +276,11 @@ async def upload_demo_video(video: UploadFile = File(description="시연용 영�
 
     try:
         with destination.open("wb") as output:
-            while chunk := await video.read(1024 * 1024):
+            # 파일 전체를 메모리에 올리지 않고 1MB씩 읽어서 저장한다.
+            while True:
+                chunk = await video.read(1024 * 1024)
+                if not chunk:
+                    break
                 written += len(chunk)
                 if written > MAX_DEMO_VIDEO_BYTES:
                     raise HTTPException(

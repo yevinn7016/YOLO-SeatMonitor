@@ -48,10 +48,14 @@ def inspect_demo_video(
         if not encoded:
             raise InvalidDemoVideoError("영상 미리보기를 만들 수 없습니다.")
 
+        duration_seconds = 0.0
+        if total_frames:
+            duration_seconds = total_frames / fps
+
         info = DemoVideoInfo(
             video_id=video_id,
             filename=filename,
-            duration_seconds=(total_frames / fps if total_frames else 0),
+            duration_seconds=duration_seconds,
             fps=fps,
             total_frames=total_frames,
         )
@@ -61,7 +65,10 @@ def inspect_demo_video(
 
 
 class DemoVideoWorker:
-    """업로드 영상을 원래 속도로 재생하고 최신 프레임을 별도로 분석한다."""
+    """재생 스레드는 프레임을 송출하고 분석 스레드는 최신 프레임을 YOLO에 전달한다.
+
+    상태 판정은 SeatService, 업로드 파일과 시연 모드 관리는 DemoVideoManager가 맡는다.
+    """
 
     def __init__(
         self,
@@ -135,11 +142,9 @@ class DemoVideoWorker:
             error = self._error
 
         total_frames = self.info.total_frames
-        progress = (
-            min(100.0, current_frame / total_frames * 100)
-            if total_frames
-            else 0.0
-        )
+        progress = 0.0
+        if total_frames:
+            progress = min(100.0, current_frame / total_frames * 100)
         current_seconds = min(
             self.info.duration_seconds,
             current_frame / self.info.fps,
@@ -176,6 +181,7 @@ class DemoVideoWorker:
                 if not success or frame is None:
                     break
 
+                # 프레임 번호를 영상 내 시각으로 바꿔 원래 재생 속도에 맞춰 기다린다.
                 target_time = started_at + frame_index / self.info.fps
                 wait_seconds = target_time - time.monotonic()
                 if wait_seconds > 0 and self._stop_event.wait(wait_seconds):
@@ -217,10 +223,10 @@ class DemoVideoWorker:
                     layout = self.seat_service.get_layout()
                     if layout.seats:
                         with self._inference_lock:
-                            statuses = analyze_frame(self.model, frame, layout.seats)
+                            instant_statuses = analyze_frame(self.model, frame, layout.seats)
                         if self._stop_event.is_set():
                             return
-                        self.seat_service.update_statuses(statuses)
+                        self.seat_service.update_statuses(instant_statuses)
                 except Exception as error:
                     self._fail(f"YOLO 영상 분석 실패: {error}")
                     return
@@ -275,7 +281,10 @@ class DemoVideoManager:
     def enter(self) -> DemoStatus:
         with self._lock:
             self._mode = "demo"
-            self._status = "uploaded" if self._info else "idle"
+            if self._info is not None:
+                self._status = "uploaded"
+            else:
+                self._status = "idle"
         self._notify_streams()
         return self.status()
 
@@ -387,10 +396,15 @@ class DemoVideoManager:
 
     def mjpeg_stream(self) -> Iterator[bytes]:
         last_sequence = -1
+
+        def has_new_frame() -> bool:
+            return self._frame_sequence != last_sequence
+
         while True:
             with self._frame_condition:
+                # 이 연결이 마지막으로 보낸 프레임 이후에 새 프레임이 생겼는지 확인한다.
                 self._frame_condition.wait_for(
-                    lambda: self._frame_sequence != last_sequence,
+                    has_new_frame,
                     timeout=15,
                 )
                 if self.mode != "demo":
