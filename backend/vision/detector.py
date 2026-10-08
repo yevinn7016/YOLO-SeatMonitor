@@ -24,7 +24,7 @@ def load_model(model_path: str):
 # YOLO 원본 결과를 객체별 정보 목록으로 정리한다.
 def format_yolo_results(results) -> list[dict]:
     detections = []
-    result = results[0]
+    result = results[0] # 첫 번째 이미지의 분석 결과 객체
 
     for box in result.boxes:
         class_id = int(box.cls[0])
@@ -62,23 +62,23 @@ def get_box_center(box: list[float]) -> tuple[float, float]:
 def is_point_in_polygon(point: tuple[float, float], seat: SeatRoi) -> bool:
     """ray casting 방식으로 정규화 중심점이 ROI 내부인지 확인한다."""
 
-    x, y = point
+    center_x, center_y = point
     polygon = seat.polygon
     inside = False
     previous = polygon[-1]  # 마지막 점과 첫 번째 점 사이의 변부터 검사한다.
 
     for current in polygon:
-        current_is_below = current.y > y
-        previous_is_below = previous.y > y
+        current_is_below = current.y > center_y
+        previous_is_below = previous.y > center_y
         crosses_y = current_is_below != previous_is_below
         if crosses_y:
             # 수평선이 변과 만나는 x 좌표. 기존 계산 순서를 유지한다.
             width_difference = previous.x - current.x
             height_difference = previous.y - current.y
-            height_from_current = y - current.y
+            height_from_current = center_y - current.y
             horizontal_offset = width_difference * height_from_current / height_difference
             boundary_x = current.x + horizontal_offset
-            if x < boundary_x:
+            if center_x < boundary_x:
                 inside = not inside  # 오른쪽 경계 교차 횟수가 홀수이면 내부이다.
 
         previous = current
@@ -121,7 +121,7 @@ def decide_instant_status(detections: list[dict]) -> str:
     # 소지품이 먼저 발견되어도 사람이 있으면 점유가 우선이다.
     for detection in detections:
         if detection["class_name"] in PERSON_CLASSES:
-            confidence = float(detection.get("confidence", 1.0))
+            confidence = float(detection.get("confidence", 1.0)) #신뢰도 기본값이 필요한지는 검토 필요
             if confidence >= PERSON_MIN_CONFIDENCE:
                 return "occupied"
 
