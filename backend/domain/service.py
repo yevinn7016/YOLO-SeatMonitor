@@ -165,12 +165,14 @@ class SeatService:
         try: # sse 연결 중 실행
             while True:
                 try:
-                    statuses = subscriber.get(timeout=1)
+                    statuses = subscriber.get(timeout=1) #프론트는 마지막 상태를 계속 보여줌, 꺼낼 상태가 없어도 continue
                     yield statuses
                 except Empty:
                     continue
         finally: # 제너레이터가 종료될 때 구독 큐를 정리한다.
             self.unsubscribe(subscriber)
+        # 예시: 0.5초에 값이 들어오면 → 1초를 채우지 않고 그때 get()이 값을 꺼내 반환함. 이어서 yield로 전달하고 일시 정지
+        # 1초 동안 값이 없으면 → Empty 발생 → except Empty → continue → 반복문 처음으로 돌아가 get()에서 다시 최대 1초 기다림
 
     # 감지 결과와 이전 상태를 비교해 한 좌석의 다음 상태를 결정한다.
     def _transition_status(
@@ -181,7 +183,7 @@ class SeatService:
         wall_now: datetime,
     ) -> SeatStatus:
         seat_id = instant_status.seat_id
-        if previous_status is None:
+        if previous_status is None: 
             previous_value = "empty"
         else:
             previous_value = previous_status.status

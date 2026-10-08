@@ -45,11 +45,11 @@ class CameraWorker:
         self._stop_event = Event()
         self._capture = None
         self._latest_frame = None
-        self._frame_lock = Lock()
-        self._capture_lock = Lock()
-        self._state_lock = Lock()
+        self._frame_lock = Lock() # 최신 프레임 교체, 복사할 때
+        self._capture_lock = Lock() # 카메라 연결 객체 등록, 해제 등
+        self._state_lock = Lock() # 연결 상태와 오류를 읽거나 변경할 때
 
-    @property
+    @property # 메서드를 속성처럼 읽을 수 있게
     def connected(self) -> bool:
         with self._state_lock:
             return self._connected

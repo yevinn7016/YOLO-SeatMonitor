@@ -186,7 +186,7 @@ class DemoVideoWorker:
                 wait_seconds = target_time - time.monotonic()
                 if wait_seconds > 0 and self._stop_event.wait(wait_seconds):
                     break
-
+                
                 with self._frame_lock:
                     self._latest_frame = frame
 

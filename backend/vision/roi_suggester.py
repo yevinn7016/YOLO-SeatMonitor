@@ -1,10 +1,10 @@
-import base64
+import base64 #이미지 같은 바이너리 데이터를 문자열로 표현하는 모듈
 import logging
-from collections import defaultdict
+from collections import defaultdict # 없는 키의 기본값을 자동으로 만드는 딕셔너리 클래스
 from uuid import uuid4
 
-import cv2
-import numpy as np
+import cv2 # 이미지·영상 처리 도구
+import numpy as np # 이미지같은 숫자 배열을 다루는 도구
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.domain.models import Layout, LayoutSuggestion, Point, SeatRoi
@@ -13,11 +13,13 @@ from backend.domain.models import Layout, LayoutSuggestion, Point, SeatRoi
 DEFAULT_GEMINI_ROI_MODEL = "gemini-3.7-flash"
 SUPPORTED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_ROI_IMAGE_BYTES = 10 * 1024 * 1024
-MIN_NORMALIZED_POLYGON_AREA = 0.0001
+# 10 * 1024         # 10 MiB → 10,240 KiB
+# 10 * 1024 * 1024  # 10,240 KiB → 10,485,760 바이트
+MIN_NORMALIZED_POLYGON_AREA = 0.0001 # 면적이 극히 작은 선같은 영역을 걸러내기 위함
 GEMINI_REQUEST_TIMEOUT_SECONDS = 120.0
 
-logger = logging.getLogger(__name__)
-
+logger = logging.getLogger(__name__) # logger = logging.getLogger("backend.vision.roi_suggester")과 동일한 의미
+# __name__은 파이썬이 자동으로 제공하는 현재 모듈의 이름, 로그를 남기는 주체에 현재 모듈 이름을 붙이는 것
 ROI_SUGGESTION_PROMPT = """
 Analyze this fixed-camera image of a library, classroom, or study area.
 
@@ -77,6 +79,23 @@ GEMINI_ROI_RESPONSE_SCHEMA = {
     "required": ["seats"],
 }
 
+# properties: 객체에는 어떤 필드가 있나? {}
+# items: 배열의 각 원소는 어떻게 생겼나? []
+# 실제응답예시
+# {
+#   "seats": [
+#     {
+#       "table_group": 1,
+#       "row_group": 1,
+#       "polygon": [
+#         {"x": 100, "y": 200},
+#         {"x": 300, "y": 200},
+#         {"x": 300, "y": 500},
+#         {"x": 100, "y": 500}
+#       ]
+#     }
+#   ]
+# }
 
 class RoiSuggestionError(RuntimeError):
     """ROI 후보 생성 과정의 기본 오류."""
@@ -97,6 +116,7 @@ class RoiSuggestionRateLimitError(RoiSuggestionProviderError):
 class InvalidRoiImageError(RoiSuggestionError):
     """업로드된 파일이 지원되는 이미지가 아닌 경우."""
 
+# 필요에 따라 오류 처리 범위를 지정하기 위해 상속
 
 class _GeminiPoint(BaseModel):
     x: int = Field(
@@ -129,7 +149,7 @@ class _GeminiSeatCandidate(BaseModel):
 
 class _GeminiRoiResponse(BaseModel):
     seats: list[_GeminiSeatCandidate] = Field(
-        default_factory=list,
+        default_factory=list, # seats생략 시 list생성자 함수로 빈 리스트를 생성하여 기본값 지정
         max_length=100,
         description="Every visible individual seat exactly once.",
     )

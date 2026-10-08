@@ -142,7 +142,7 @@ def put_layout(layout: Layout):
 
 @app.post("/api/layout/suggestions", response_model=LayoutSuggestion)
 async def create_layout_suggestion(
-    image: UploadFile = File(
+    image: UploadFile = File( # 기본값이 아닌 File로 받겠다는 설정
         description="ROI 편집기에 표시할 카메라 캡처 이미지",
     ),
     additional_instructions: str | None = Form(
@@ -161,7 +161,7 @@ async def create_layout_suggestion(
             detail="JPEG, PNG, WebP 이미지만 사용할 수 있습니다.",
         )
 
-    image_bytes = await image.read(MAX_ROI_IMAGE_BYTES + 1)
+    image_bytes = await image.read(MAX_ROI_IMAGE_BYTES + 1) # 파일 크기 초과 여부를 알기위해 +1
     await image.close()
 
     if len(image_bytes) > MAX_ROI_IMAGE_BYTES:
@@ -171,8 +171,8 @@ async def create_layout_suggestion(
     try:
         # Gemini 응답 대기는 별도 스레드에서 수행하여 다른 API 요청을 막지 않는다.
         suggestion = await run_in_threadpool(
-            suggest_layout_with_gemini,
-            image_bytes,
+            suggest_layout_with_gemini, # 실행할 함수
+            image_bytes, # 위 함수에 전달할 인수들
             mime_type,
             api_key,
             GEMINI_ROI_MODEL,
@@ -271,26 +271,26 @@ async def upload_demo_video(video: UploadFile = File(description="시연용 영�
 
     video_id = f"demo-{uuid4().hex}"
     DEMO_VIDEO_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    destination = DEMO_VIDEO_DIRECTORY / f"{video_id}{suffix}"
+    destination = DEMO_VIDEO_DIRECTORY / f"{video_id}{suffix}" #/는 경로 연결 연산자
     written = 0
 
     try:
-        with destination.open("wb") as output:
+        with destination.open("wb") as output: # w: 쓰기모드 b: 이미지,영상 같은 바이너리 데이터를 다루는 모드
             # 파일 전체를 메모리에 올리지 않고 1MB씩 읽어서 저장한다.
             while True:
-                chunk = await video.read(1024 * 1024)
-                if not chunk:
+                chunk = await video.read(1024 * 1024) # 1024*1024바이트는 1MB, read는 읽은 위치를 기억
+                if not chunk: # 파일 끝까지 읽으면 빈 바이트 b""가 반환됨
                     break
-                written += len(chunk)
+                written += len(chunk) # 총 바이트수 누적
                 if written > MAX_DEMO_VIDEO_BYTES:
                     raise HTTPException(
                         status_code=413,
                         detail="시연 영상 크기 제한을 초과했습니다.",
                     )
-                output.write(chunk)
+                output.write(chunk) # 조각을 파일에 쓴다, 조각들이 합쳐져 원래 영상이 된다
     except Exception:
-        destination.unlink(missing_ok=True)
-        raise
+        destination.unlink(missing_ok=True) # Path객체가 가리키는 실제 파일 삭제
+        raise # raise로 발생했던 예외를 그대로 다시 전달
     finally:
         await video.close()
 
@@ -360,7 +360,7 @@ def get_demo_status():
 def stream_demo_video():
     manager = require_demo_mode()
     return StreamingResponse(
-        manager.mjpeg_stream(),
+        manager.mjpeg_stream(), # 첫 번째 인수: 데이터 공급 제너레이터
         media_type="multipart/x-mixed-replace; boundary=frame",
         headers={"Cache-Control": "no-store"},
     )
